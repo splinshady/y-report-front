@@ -1,1 +1,17 @@
 @import "tailwindcss";
+
+@theme {
+  /* 640, 768, 1024, 1280, 1536 */
+  --breakpoint-sm: 40rem;
+  --breakpoint-md: 48rem;
+  --breakpoint-lg: 64rem;
+  --breakpoint-xl: 80rem;
+  --breakpoint-2xl: 96rem;
+
+  /* 16, 24, 32, 40, 48 */
+  --spacing-gutter: 1rem;
+  --spacing-gutter-sm: 1.5rem;
+  --spacing-gutter-md: 2rem;
+  --spacing-gutter-lg: 2.5rem;
+  --spacing-gutter-xl: 3rem;
+}

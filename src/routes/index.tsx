@@ -6,6 +6,7 @@ import {
   Outlet,
   redirect,
 } from "@tanstack/react-router";
+import { PageLayout, pageGutterClassName } from "../components/page-layout";
 import { authClient, signInWithYandex } from "../lib/auth-client";
 
 async function hasSession() {
@@ -19,7 +20,9 @@ function HomePage() {
 
 function SignInPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#121417] px-4 py-10">
+    <main
+      className={`flex min-h-dvh w-full items-center justify-center bg-[#121417] py-10 ${pageGutterClassName}`}
+    >
       <section className="w-full max-w-[420px] rounded-[32px] bg-[#2b2d31] px-6 py-10 text-white">
         <div className="text-center">
           <p className="text-[32px] font-semibold leading-none tracking-tight">
@@ -74,11 +77,25 @@ function AccountPage() {
 }
 
 const rootRoute = createRootRoute({
-  component: () => <Outlet />,
+  component: () => (
+    <div className="min-h-dvh">
+      <Outlet />
+    </div>
+  ),
+});
+
+const appLayoutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  id: "app-layout",
+  component: () => (
+    <PageLayout>
+      <Outlet />
+    </PageLayout>
+  ),
 });
 
 const indexRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => appLayoutRoute,
   path: "/",
   beforeLoad: async () => {
     if (!(await hasSession())) {
@@ -100,7 +117,7 @@ const signInRoute = createRoute({
 });
 
 const signUpRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => appLayoutRoute,
   path: "/sign-up",
   beforeLoad: async () => {
     if (await hasSession()) {
@@ -111,7 +128,7 @@ const signUpRoute = createRoute({
 });
 
 const accountRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => appLayoutRoute,
   path: "/account",
   beforeLoad: async () => {
     if (!(await hasSession())) {
@@ -122,10 +139,8 @@ const accountRoute = createRoute({
 });
 
 export const routeTree = rootRoute.addChildren([
-  indexRoute,
+  appLayoutRoute.addChildren([indexRoute, signUpRoute, accountRoute]),
   signInRoute,
-  signUpRoute,
-  accountRoute,
 ]);
 
 export const router = createRouter({

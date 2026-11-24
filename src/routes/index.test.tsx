@@ -5,6 +5,7 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { pageGutterClassName } from "../components/page-layout";
 import { routeTree } from "./index";
 
 const { signInSocial, sessionState, clientOptions } = vi.hoisted(() => ({
@@ -76,7 +77,9 @@ describe("index route", () => {
 
     await renderPath("/");
 
-    expect(await screen.findByText("Основа клиента собрана")).toBeTruthy();
+    const homeText = await screen.findByText("Основа клиента собрана");
+    expect(homeText.parentElement?.className).toContain("max-w-screen-xl");
+    expect(homeText.parentElement?.className).toContain(pageGutterClassName);
   });
 
   it("без сессии / и /account переходят на /sign-in", async () => {
@@ -107,6 +110,11 @@ describe("index route", () => {
 
   it("на /sign-in кнопка вызывает вход yandex, ссылка «Создать ID» ведёт на /sign-up", async () => {
     await renderPath("/sign-in");
+
+    const signInMain = (await screen.findByRole("button", { name: "Войти через Яндекс" })).closest(
+      "main",
+    );
+    expect(signInMain?.className).toContain(pageGutterClassName);
 
     const createId = await screen.findByRole("link", { name: "Создать ID" });
     expect(createId.getAttribute("href")).toBe("/sign-up");
