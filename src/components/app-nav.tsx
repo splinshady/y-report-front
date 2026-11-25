@@ -16,6 +16,7 @@ export function AppNav() {
 
   return (
     <nav
+      aria-label={navigationMessages.menu}
       className={`flex w-full flex-nowrap items-center bg-canvas font-sans text-xs sm:gap-x-6 ${pageGutterClassName}`}
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >
@@ -28,6 +29,14 @@ export function AppNav() {
         inactiveProps={{ className: "text-muted" }}
       >
         {navigationMessages.home}
+      </Link>
+      <Link
+        to={paths.schedule}
+        className={navItemClassName}
+        activeProps={{ className: "font-medium text-ink" }}
+        inactiveProps={{ className: "text-muted" }}
+      >
+        {navigationMessages.schedule}
       </Link>
       <Link
         to={paths.reports}

@@ -32,6 +32,20 @@
   --color-tile-blue: #add8ff;
   --color-tile-lilac: #c4b8eb;
   --color-tile-sage: #9bceaa;
+  --color-approved-day: #6aa6e0;
+  --color-approved-night: #8b78d6;
+  --color-background: #f5f5f7;
+  --color-foreground: #1d1d1f;
+  --color-primary: #0066cc;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #ffffff;
+  --color-secondary-foreground: #1d1d1f;
+  --color-muted-foreground: #6e6e73;
+  --color-accent-foreground: #ffffff;
+  --color-popover: #ffffff;
+  --color-border: #d2d2d7;
+  --color-input: #d2d2d7;
+  --color-ring: #0066cc;
 
   --text-display: clamp(2.5rem, 7vw, 5rem);
   --text-display--line-height: 1.05;
