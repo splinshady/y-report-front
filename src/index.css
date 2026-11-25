@@ -32,6 +32,8 @@
   --color-tile-blue: #add8ff;
   --color-tile-lilac: #c4b8eb;
   --color-tile-sage: #9bceaa;
+  --color-approved-day: #6aa6e0;
+  --color-approved-night: #8b78d6;
 
   --text-display: clamp(2.5rem, 7vw, 5rem);
   --text-display--line-height: 1.05;

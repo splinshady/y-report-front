@@ -1,15 +1,22 @@
 import { useState } from "react";
+import { type DayButtonProps, type Modifiers } from "react-day-picker";
+import { Button } from "../../components/ui/button";
+import { Calendar } from "../../components/ui/calendar";
 import { PageTitle } from "../../components/ui/type";
 import { scheduleMessages } from "./messages";
 import {
+  approveRequest,
+  createRequest,
   dateFromKey,
   dateKey,
   fillRange,
   isSelectable,
   openMonths,
+  type Assignment,
   type CalendarMonth,
   type ScheduleAssignments,
   type Shift,
+  type ShiftStatus,
 } from "./selection";
 
 const shiftModes = [
@@ -24,42 +31,78 @@ function modeClassName(pressed: boolean): string {
   ].join(" ");
 }
 
-function dayClassName(options: {
-  shift: Shift | undefined;
-  marked: boolean;
-  selectable: boolean;
-}): string {
-  const classes = [
-    "flex min-h-touch w-full min-w-0 items-center justify-center border-0 p-0 font-sans",
-    options.selectable ? "text-ink" : "text-muted",
+export function assignmentClassName(assignment: Assignment | undefined): string {
+  if (assignment?.status === "draft" && assignment.shift === "day") {
+    return "bg-tile-blue";
+  }
+  if (assignment?.status === "draft" && assignment.shift === "night") {
+    return "bg-tile-lilac";
+  }
+  if (assignment?.status === "requested" && assignment.shift === "day") {
+    return "bg-tile-sage";
+  }
+  if (assignment?.status === "requested" && assignment.shift === "night") {
+    return "bg-tile-rose";
+  }
+  if (assignment?.status === "approved" && assignment.shift === "day") {
+    return "bg-approved-day";
+  }
+  if (assignment?.status === "approved" && assignment.shift === "night") {
+    return "bg-approved-night";
+  }
+  return "bg-transparent";
+}
+
+function assignmentFromModifiers(modifiers: Modifiers): Assignment | undefined {
+  const pairs: Array<[string, Assignment]> = [
+    ["draftDay", { shift: "day", status: "draft" }],
+    ["draftNight", { shift: "night", status: "draft" }],
+    ["requestedDay", { shift: "day", status: "requested" }],
+    ["requestedNight", { shift: "night", status: "requested" }],
+    ["approvedDay", { shift: "day", status: "approved" }],
+    ["approvedNight", { shift: "night", status: "approved" }],
   ];
 
-  if (options.shift === "day") {
-    classes.push("bg-tile-blue");
-  } else if (options.shift === "night") {
-    classes.push("bg-tile-lilac");
-  } else {
-    classes.push("bg-transparent");
+  for (const [name, assignment] of pairs) {
+    if (modifiers[name]) {
+      return assignment;
+    }
   }
 
-  if (options.marked) {
+  return undefined;
+}
+
+function ScheduleDayButton({ day, modifiers, ...props }: DayButtonProps) {
+  const classes = [
+    "flex min-h-touch w-full min-w-0 items-center justify-center border-0 p-0 font-sans",
+    props.disabled ? "text-muted" : "text-ink",
+    assignmentClassName(assignmentFromModifiers(modifiers)),
+  ];
+
+  if (modifiers.periodStart) {
     classes.push("ring-2", "ring-inset", "ring-ink");
   }
 
-  return classes.join(" ");
+  return (
+    <button
+      {...props}
+      aria-label={scheduleMessages.dayLabel(day.date)}
+      aria-pressed={modifiers.periodStart ? true : undefined}
+      className={classes.join(" ")}
+    >
+      {day.date.getDate()}
+    </button>
+  );
 }
 
 function isSameMonth(left: CalendarMonth, right: CalendarMonth): boolean {
   return left.year === right.year && left.monthIndex === right.monthIndex;
 }
 
-function leadingEmptyCells(month: CalendarMonth): number {
-  const weekday = new Date(month.year, month.monthIndex, 1).getDay();
-  return (weekday + 6) % 7;
-}
-
-function monthLength(month: CalendarMonth): number {
-  return new Date(month.year, month.monthIndex + 1, 0).getDate();
+function datesWith(assignments: ScheduleAssignments, status: ShiftStatus, shift: Shift): Date[] {
+  return Object.entries(assignments)
+    .filter(([, assignment]) => assignment.status === status && assignment.shift === shift)
+    .map(([key]) => dateFromKey(key));
 }
 
 export function SchedulePage({ today }: { today: Date }) {
@@ -69,6 +112,11 @@ export function SchedulePage({ today }: { today: Date }) {
   const [period, setPeriod] = useState(false);
   const [rangeStartKey, setRangeStartKey] = useState<string | null>(null);
   const [assignments, setAssignments] = useState<ScheduleAssignments>({});
+  const hasDraft = Object.values(assignments).some((assignment) => assignment.status === "draft");
+  const hasRequested = Object.values(assignments).some((assignment) => assignment.status === "requested");
+  const requestRows = Object.entries(assignments)
+    .filter(([, assignment]) => assignment.status === "requested" || assignment.status === "approved")
+    .sort(([left], [right]) => left.localeCompare(right));
 
   function togglePeriod() {
     if (period) {
@@ -86,6 +134,10 @@ export function SchedulePage({ today }: { today: Date }) {
     }
 
     const key = dateKey(date);
+    const existing = assignments[key];
+    if (existing && existing.status !== "draft") {
+      return;
+    }
 
     if (period) {
       if (rangeStartKey == null) {
@@ -100,18 +152,20 @@ export function SchedulePage({ today }: { today: Date }) {
     }
 
     setAssignments((current) => {
-      if (current[key] === shift) {
-        const next: Record<string, Shift> = { ...current };
+      const currentDay = current[key];
+      if (currentDay && currentDay.status !== "draft") {
+        return current;
+      }
+
+      if (currentDay?.shift === shift) {
+        const next: Record<string, Assignment> = { ...current };
         delete next[key];
         return next;
       }
 
-      return { ...current, [key]: shift };
+      return { ...current, [key]: { shift, status: "draft" } };
     });
   }
-
-  const blanks = leadingEmptyCells(visibleMonth);
-  const days = monthLength(visibleMonth);
 
   return (
     <section className="font-sans">
@@ -153,31 +207,71 @@ export function SchedulePage({ today }: { today: Date }) {
           {scheduleMessages.period}
         </button>
       </div>
-      <div className="mt-4 grid w-full grid-cols-7">
-        {Array.from({ length: blanks }, (_, index) => (
-          <div key={`blank-${visibleMonth.year}-${visibleMonth.monthIndex}-${index}`} aria-hidden="true" />
-        ))}
-        {Array.from({ length: days }, (_, index) => {
-          const date = new Date(visibleMonth.year, visibleMonth.monthIndex, index + 1);
-          const key = dateKey(date);
-          const selectable = isSelectable(date, today);
-          const assigned = assignments[key];
-          const marked = period && rangeStartKey === key;
-
-          return (
-            <button
+      <div className="mt-4 flex w-full flex-col gap-2">
+        <Button
+          className="w-full"
+          disabled={!hasDraft}
+          onClick={() => {
+            setAssignments((current) => createRequest(current));
+            setRangeStartKey(null);
+            setPeriod(false);
+          }}
+        >
+          {scheduleMessages.createRequest}
+        </Button>
+        <Button
+          className="w-full"
+          disabled={!hasRequested}
+          onClick={() => setAssignments((current) => approveRequest(current))}
+        >
+          {scheduleMessages.approveRequest}
+        </Button>
+      </div>
+      <div className="mt-4 flex w-full flex-col gap-4 md:flex-row md:items-start">
+        <Calendar
+          className="min-w-0 flex-1"
+          month={new Date(visibleMonth.year, visibleMonth.monthIndex, 1)}
+          onMonthChange={(month) => {
+            const next = months.find(
+              (item) => item.year === month.getFullYear() && item.monthIndex === month.getMonth(),
+            );
+            if (next) {
+              setVisibleMonth(next);
+            }
+          }}
+          startMonth={new Date(months[0].year, months[0].monthIndex, 1)}
+          endMonth={new Date(months[1].year, months[1].monthIndex, 1)}
+          disabled={(date) => !isSelectable(date, today)}
+          onDayClick={selectDay}
+          labels={{
+            labelPrevious: () => scheduleMessages.previousMonth,
+            labelNext: () => scheduleMessages.nextMonth,
+            labelGrid: (date) => scheduleMessages.monthLabel(date.getFullYear(), date.getMonth()),
+          }}
+          formatters={{
+            formatCaption: (month) => scheduleMessages.monthLabel(month.getFullYear(), month.getMonth()),
+          }}
+          modifiers={{
+            draftDay: datesWith(assignments, "draft", "day"),
+            draftNight: datesWith(assignments, "draft", "night"),
+            requestedDay: datesWith(assignments, "requested", "day"),
+            requestedNight: datesWith(assignments, "requested", "night"),
+            approvedDay: datesWith(assignments, "approved", "day"),
+            approvedNight: datesWith(assignments, "approved", "night"),
+            periodStart: rangeStartKey ? [dateFromKey(rangeStartKey)] : [],
+          }}
+          components={{ DayButton: ScheduleDayButton }}
+        />
+        <ul aria-label={scheduleMessages.requests} className="flex w-full min-w-0 flex-col gap-2 md:w-80">
+          {requestRows.map(([key, assignment]) => (
+            <li
               key={key}
-              type="button"
-              disabled={!selectable}
-              aria-label={scheduleMessages.dayLabel(date)}
-              aria-pressed={marked ? true : undefined}
-              className={dayClassName({ shift: assigned, marked, selectable })}
-              onClick={() => selectDay(date)}
+              className={`flex min-h-touch items-center px-3 font-sans text-ink ${assignmentClassName(assignment)}`}
             >
-              {date.getDate()}
-            </button>
-          );
-        })}
+              {scheduleMessages.requestLine(dateFromKey(key), assignment.shift)}
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   );

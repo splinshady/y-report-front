@@ -64,6 +64,7 @@ const sessionUser = {
 
 const tabLabels = [
   navigationMessages.home,
+  navigationMessages.schedule,
   navigationMessages.reports,
   navigationMessages.settings,
   navigationMessages.account,
@@ -148,6 +149,7 @@ describe("index route", () => {
 
     const screens = [
       { path: paths.home, current: navigationMessages.home },
+      { path: paths.schedule, current: navigationMessages.schedule },
       { path: paths.reports, current: navigationMessages.reports },
       { path: paths.settings, current: navigationMessages.settings },
       { path: paths.account, current: navigationMessages.account },
@@ -284,7 +286,7 @@ describe("index route", () => {
     expect(await screen.findByRole("heading", { name: scheduleMessages.title })).toBeTruthy();
   });
 
-  it("прямой путь расписания показывает заголовок и прежние четыре вкладки", async () => {
+  it("прямой путь расписания показывает заголовок и вкладку расписания", async () => {
     sessionState.current = sessionUser;
 
     await renderPath(paths.schedule);
@@ -293,8 +295,10 @@ describe("index route", () => {
 
     const navigation = screen.getByRole("navigation");
     const tabLinks = tabLabels.map((label) => within(navigation).getByRole("link", { name: label }));
-    expect(tabLinks).toHaveLength(4);
-    expect(within(navigation).queryByRole("link", { name: scheduleMessages.title })).toBeNull();
+    expect(tabLinks).toHaveLength(tabLabels.length);
+    const scheduleTab = within(navigation).getByRole("link", { name: navigationMessages.schedule });
+    expect(scheduleTab.getAttribute("href")).toBe(paths.schedule);
+    expect(scheduleTab.getAttribute("aria-current")).toBe("page");
     expect(within(navigation).queryByRole("link", { name: scheduleMessages.open })).toBeNull();
   });
 

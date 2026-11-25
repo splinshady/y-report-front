@@ -191,4 +191,115 @@ describe("SchedulePage", () => {
     expect(dayButton(new Date(2026, 10, 24)).className).not.toContain("bg-tile-blue");
     expect((dayButton(new Date(2026, 10, 24)) as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it("создание запроса красит дни и пишет их в список, утверждение меняет цвет", () => {
+    renderSchedule();
+
+    const create = modeButton(scheduleMessages.createRequest);
+    const approve = modeButton(scheduleMessages.approveRequest);
+    expect((create as HTMLButtonElement).disabled).toBe(true);
+    expect((approve as HTMLButtonElement).disabled).toBe(true);
+    expect(create.className).toContain("min-h-touch");
+    expect(approve.className).toContain("min-h-touch");
+
+    fireEvent.click(dayButton(today));
+    fireEvent.click(modeButton(scheduleMessages.night));
+    fireEvent.click(dayButton(new Date(2026, 10, 26)));
+
+    expect((create as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(create);
+
+    const dayCell = dayButton(today);
+    const nightCell = dayButton(new Date(2026, 10, 26));
+    expect(dayCell.className).toContain("bg-tile-sage");
+    expect(dayCell.className).not.toContain("bg-tile-blue");
+    expect(nightCell.className).toContain("bg-tile-rose");
+    expect(nightCell.className).not.toContain("bg-tile-lilac");
+
+    const dayLine = screen.getByText(scheduleMessages.requestLine(today, "day"));
+    const nightLine = screen.getByText(scheduleMessages.requestLine(new Date(2026, 10, 26), "night"));
+    expect(dayLine.className).toContain("bg-tile-sage");
+    expect(nightLine.className).toContain("bg-tile-rose");
+    expect(screen.getByRole("list", { name: scheduleMessages.requests }).className).toContain("md:w-80");
+    expect(screen.getByRole("list", { name: scheduleMessages.requests }).parentElement?.className).toContain(
+      "md:flex-row",
+    );
+
+    fireEvent.click(dayCell);
+    fireEvent.click(nightCell);
+    expect(dayCell.className).toContain("bg-tile-sage");
+    expect(nightCell.className).toContain("bg-tile-rose");
+    expect((create as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(approve);
+    expect(dayCell.className).toContain("bg-approved-day");
+    expect(nightCell.className).toContain("bg-approved-night");
+    expect(dayLine.className).toContain("bg-approved-day");
+    expect(nightLine.className).toContain("bg-approved-night");
+    expect((approve as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(dayButton(new Date(2026, 10, 27)));
+    expect(dayButton(new Date(2026, 10, 27)).className).toContain("bg-tile-lilac");
+    expect(screen.queryByText(scheduleMessages.requestLine(new Date(2026, 10, 27), "night"))).toBeNull();
+
+    fireEvent.click(modeButton(scheduleMessages.day));
+    fireEvent.click(dayCell);
+    fireEvent.click(nightCell);
+    expect(dayCell.className).toContain("bg-approved-day");
+    expect(nightCell.className).toContain("bg-approved-night");
+  });
+
+  it("стрелки не открывают месяц раньше текущего и позже следующего", () => {
+    renderSchedule();
+
+    const previous = modeButton(scheduleMessages.previousMonth);
+    expect(previous.className).toContain("min-h-touch");
+    expect(previous.getAttribute("aria-disabled")).toBe("true");
+    expect(screen.queryByRole("columnheader")).toBeNull();
+
+    fireEvent.click(previous);
+    expect(screen.queryByRole("button", { name: scheduleMessages.dayLabel(new Date(2026, 9, 31)) })).toBeNull();
+    expect(modeButton(scheduleMessages.monthLabel(2026, 10)).getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(modeButton(scheduleMessages.nextMonth));
+    expect(modeButton(scheduleMessages.monthLabel(2026, 11)).getAttribute("aria-pressed")).toBe("true");
+    expect(modeButton(scheduleMessages.nextMonth).getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(modeButton(scheduleMessages.nextMonth));
+    expect(screen.queryByRole("button", { name: scheduleMessages.dayLabel(new Date(2027, 0, 1)) })).toBeNull();
+  });
+
+  it("день запроса не начинает период, а список хранит дни другого месяца", () => {
+    renderSchedule();
+
+    fireEvent.click(modeButton(scheduleMessages.period));
+    fireEvent.click(dayButton(new Date(2026, 10, 30)));
+    showMonth(2026, 11);
+    fireEvent.click(dayButton(new Date(2026, 11, 2)));
+    fireEvent.click(modeButton(scheduleMessages.createRequest));
+
+    const lines = [
+      scheduleMessages.requestLine(new Date(2026, 10, 30), "day"),
+      scheduleMessages.requestLine(new Date(2026, 11, 1), "day"),
+      scheduleMessages.requestLine(new Date(2026, 11, 2), "day"),
+    ];
+    expect(screen.getAllByRole("listitem").map((item) => item.textContent)).toEqual(lines);
+    expect(screen.getAllByRole("listitem")[0]?.className).toContain("bg-tile-sage");
+
+    showMonth(2026, 10);
+    const period = modeButton(scheduleMessages.period);
+    const requested = dayButton(new Date(2026, 10, 30));
+    fireEvent.click(period);
+    fireEvent.click(requested);
+    expect(period.getAttribute("aria-pressed")).toBe("true");
+    expect(requested.className).not.toContain("ring-ink");
+    expect(requested.getAttribute("aria-pressed")).not.toBe("true");
+    expect(requested.className).toContain("bg-tile-sage");
+
+    fireEvent.click(dayButton(new Date(2026, 10, 28)));
+    fireEvent.click(requested);
+    expect(period.getAttribute("aria-pressed")).toBe("true");
+    expect(dayButton(new Date(2026, 10, 28)).className).toContain("ring-ink");
+    expect(dayButton(new Date(2026, 10, 29)).className).not.toContain("bg-tile-blue");
+    expect(screen.getAllByRole("listitem").map((item) => item.textContent)).toEqual(lines);
+  });
 });

@@ -30,6 +30,14 @@ export function AppNav() {
         {navigationMessages.home}
       </Link>
       <Link
+        to={paths.schedule}
+        className={navItemClassName}
+        activeProps={{ className: "font-medium text-ink" }}
+        inactiveProps={{ className: "text-muted" }}
+      >
+        {navigationMessages.schedule}
+      </Link>
+      <Link
         to={paths.reports}
         className={navItemClassName}
         activeProps={{ className: "font-medium text-ink" }}

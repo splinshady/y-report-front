@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dateKey, fillRange, isSelectable, openMonths } from "./selection";
+import { approveRequest, createRequest, dateKey, fillRange, isSelectable, openMonths } from "./selection";
 
 const today = new Date(2026, 10, 25);
 
@@ -42,15 +42,16 @@ describe("selection", () => {
 
   it("fillRange пропускает дни вне окна и не меняет вход", () => {
     const outside = dateKey(new Date(2026, 10, 24));
-    const current = { [outside]: "night" as const };
+    const outsideEntry = { shift: "night" as const, status: "draft" as const };
+    const current = { [outside]: outsideEntry };
     const next = fillRange(new Date(2026, 10, 20), new Date(2027, 0, 2), "day", today, current);
 
     expect(next).not.toBe(current);
-    expect(current).toEqual({ [outside]: "night" });
-    expect(next[outside]).toBe("night");
+    expect(current).toEqual({ [outside]: outsideEntry });
+    expect(next[outside]).toEqual(outsideEntry);
     expect(next[dateKey(new Date(2026, 10, 20))]).toBeUndefined();
-    expect(next[dateKey(new Date(2026, 10, 25))]).toBe("day");
-    expect(next[dateKey(new Date(2026, 11, 31))]).toBe("day");
+    expect(next[dateKey(new Date(2026, 10, 25))]).toEqual({ shift: "day", status: "draft" });
+    expect(next[dateKey(new Date(2026, 11, 31))]).toEqual({ shift: "day", status: "draft" });
     expect(next[dateKey(new Date(2027, 0, 1))]).toBeUndefined();
     expect(next[dateKey(new Date(2027, 0, 2))]).toBeUndefined();
   });
@@ -63,15 +64,53 @@ describe("selection", () => {
       dateKey(new Date(2026, 11, 1)),
       dateKey(new Date(2026, 11, 2)),
     ]);
-    expect(Object.values(next)).toEqual(["night", "night", "night"]);
+    expect(Object.values(next)).toEqual([
+      { shift: "night", status: "draft" },
+      { shift: "night", status: "draft" },
+      { shift: "night", status: "draft" },
+    ]);
   });
 
-  it("запись заменяет прежнюю смену на дне", () => {
-    const key = dateKey(new Date(2026, 10, 26));
-    const current = { [key]: "day" as const };
-    const next = fillRange(new Date(2026, 10, 26), new Date(2026, 10, 26), "night", today, current);
+  it("запись заменяет черновик и не трогает запрос", () => {
+    const draftKey = dateKey(new Date(2026, 10, 26));
+    const requestedKey = dateKey(new Date(2026, 10, 27));
+    const current = {
+      [draftKey]: { shift: "day" as const, status: "draft" as const },
+      [requestedKey]: { shift: "night" as const, status: "requested" as const },
+    };
+    const next = fillRange(new Date(2026, 10, 26), new Date(2026, 10, 27), "night", today, current);
 
-    expect(next[key]).toBe("night");
-    expect(current[key]).toBe("day");
+    expect(next[draftKey]).toEqual({ shift: "night", status: "draft" });
+    expect(next[requestedKey]).toEqual({ shift: "night", status: "requested" });
+    expect(current[draftKey]).toEqual({ shift: "day", status: "draft" });
+  });
+
+  it("создание переводит черновик в запрос и оставляет утверждённый", () => {
+    const draftKey = dateKey(new Date(2026, 10, 25));
+    const approvedKey = dateKey(new Date(2026, 10, 26));
+    const current = {
+      [draftKey]: { shift: "day" as const, status: "draft" as const },
+      [approvedKey]: { shift: "night" as const, status: "approved" as const },
+    };
+    const next = createRequest(current);
+
+    expect(next).not.toBe(current);
+    expect(next[draftKey]).toEqual({ shift: "day", status: "requested" });
+    expect(next[approvedKey]).toEqual({ shift: "night", status: "approved" });
+    expect(current[draftKey].status).toBe("draft");
+  });
+
+  it("утверждение переводит запрос и не трогает черновик", () => {
+    const requestedKey = dateKey(new Date(2026, 10, 25));
+    const draftKey = dateKey(new Date(2026, 10, 26));
+    const current = {
+      [requestedKey]: { shift: "night" as const, status: "requested" as const },
+      [draftKey]: { shift: "day" as const, status: "draft" as const },
+    };
+    const next = approveRequest(current);
+
+    expect(next[requestedKey]).toEqual({ shift: "night", status: "approved" });
+    expect(next[draftKey]).toEqual({ shift: "day", status: "draft" });
+    expect(current[requestedKey].status).toBe("requested");
   });
 });

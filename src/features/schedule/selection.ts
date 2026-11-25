@@ -1,6 +1,13 @@
 export type Shift = "day" | "night";
 
-export type ScheduleAssignments = Readonly<Record<string, Shift>>;
+export type ShiftStatus = "draft" | "requested" | "approved";
+
+export type Assignment = {
+  shift: Shift;
+  status: ShiftStatus;
+};
+
+export type ScheduleAssignments = Readonly<Record<string, Assignment>>;
 
 export type CalendarMonth = {
   year: number;
@@ -62,12 +69,46 @@ export function fillRange(
   today: Date,
   current: ScheduleAssignments,
 ): ScheduleAssignments {
-  const next: Record<string, Shift> = { ...current };
+  const next: Record<string, Assignment> = { ...current };
 
   for (const date of datesFromEarlier(start, end)) {
-    if (isSelectable(date, today)) {
-      next[dateKey(date)] = shift;
+    if (!isSelectable(date, today)) {
+      continue;
     }
+
+    const key = dateKey(date);
+    const existing = next[key];
+    if (existing && existing.status !== "draft") {
+      continue;
+    }
+
+    next[key] = { shift, status: "draft" };
+  }
+
+  return next;
+}
+
+export function createRequest(current: ScheduleAssignments): ScheduleAssignments {
+  const next: Record<string, Assignment> = {};
+
+  for (const [key, assignment] of Object.entries(current)) {
+    next[key] =
+      assignment.status === "draft"
+        ? { shift: assignment.shift, status: "requested" }
+        : assignment;
+  }
+
+  return next;
+}
+
+export function approveRequest(current: ScheduleAssignments): ScheduleAssignments {
+  const next: Record<string, Assignment> = {};
+
+  for (const [key, assignment] of Object.entries(current)) {
+    next[key] =
+      assignment.status === "requested"
+        ? { shift: assignment.shift, status: "approved" }
+        : assignment;
   }
 
   return next;
