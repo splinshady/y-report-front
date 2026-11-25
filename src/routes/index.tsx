@@ -6,7 +6,24 @@ import {
   Outlet,
   redirect,
 } from "@tanstack/react-router";
+import { AppNav } from "../components/app-nav";
+import { AppShell } from "../components/app-shell";
+import { PageLayout, pageGutterClassName } from "../components/page-layout";
+import { AccountAvatar } from "../components/ui/avatar";
+import { Button } from "../components/ui/button";
+import { SurfaceCard } from "../components/ui/surface-card";
+import { DisplayTitle, PageTitle, textLinkClassName } from "../components/ui/type";
+import { scheduleApi } from "../features/schedule/api";
+import { scheduleMessages } from "../features/schedule/messages";
+import { SchedulePage } from "../features/schedule/schedule-page";
 import { authClient, signInWithYandex } from "../lib/auth-client";
+import { accountMessages } from "../messages/account";
+import { homeMessages } from "../messages/home";
+import { reportsMessages } from "../messages/reports";
+import { settingsMessages } from "../messages/settings";
+import { signInMessages } from "../messages/sign-in";
+import { signUpMessages } from "../messages/sign-up";
+import { paths } from "./paths";
 
 async function hasSession() {
   const { data } = await authClient.getSession();
@@ -14,47 +31,48 @@ async function hasSession() {
 }
 
 function HomePage() {
-  return <p>Основа клиента собрана</p>;
+  return (
+    <>
+      <p>{homeMessages.ready}</p>
+      <Link
+        to={paths.schedule}
+        className={`mt-4 inline-flex min-h-touch items-center ${textLinkClassName}`}
+      >
+        {scheduleMessages.open}
+      </Link>
+    </>
+  );
+}
+
+function ScheduleRoute() {
+  return <SchedulePage today={new Date()} api={scheduleApi} />;
 }
 
 function SignInPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#121417] px-4 py-10">
-      <section className="w-full max-w-[420px] rounded-[32px] bg-[#2b2d31] px-6 py-10 text-white">
-        <div className="text-center">
-          <p className="text-[32px] font-semibold leading-none tracking-tight">
-            Yandex{" "}
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-[9px] bg-white text-[13px] font-bold text-black">
-              ID
-            </span>
-          </p>
-          <h1 className="mt-8 text-[28px] font-medium leading-tight">Войти с ID</h1>
-        </div>
-        <button
-          type="button"
-          className="mt-8 w-full rounded-full bg-white px-4 py-4 text-lg font-medium text-black"
-          onClick={() => void signInWithYandex()}
-        >
-          Войти через Яндекс
-        </button>
-        <Link
-          to="/sign-up"
-          className="mt-3 block w-full rounded-2xl border border-white/15 px-4 py-4 text-center text-lg text-white"
-        >
-          Создать ID
+    <main
+      className={`flex min-h-dvh w-full items-center justify-center ${pageGutterClassName}`}
+    >
+      <SurfaceCard className="w-full max-w-md text-center">
+        <DisplayTitle>{signInMessages.title}</DisplayTitle>
+        <Button className="mt-8 w-full" onClick={() => void signInWithYandex()}>
+          {signInMessages.submit}
+        </Button>
+        <Link to={paths.signUp} className={`mt-4 inline-block ${textLinkClassName}`}>
+          {signInMessages.createId}
         </Link>
-      </section>
+      </SurfaceCard>
     </main>
   );
 }
 
 function SignUpPage() {
   return (
-    <section>
-      <h1>Регистрация</h1>
-      <button type="button" onClick={() => void signInWithYandex()}>
-        Зарегистрироваться через Яндекс
-      </button>
+    <section className="mx-auto flex w-full max-w-md flex-col">
+      <PageTitle>{signUpMessages.title}</PageTitle>
+      <Button className="mt-8 w-full" onClick={() => void signInWithYandex()}>
+        {signUpMessages.submit}
+      </Button>
     </section>
   );
 }
@@ -63,37 +81,92 @@ function AccountPage() {
   const { data } = authClient.useSession();
   const name = data?.user.name;
   const email = data?.user.email;
+  const image = data?.user.image;
 
   return (
-    <section>
-      <h1>Аккаунт</h1>
-      {name ? <p>{name}</p> : null}
-      {email ? <p>{email}</p> : null}
-    </section>
+    <SurfaceCard>
+      <PageTitle>{accountMessages.title}</PageTitle>
+      <div className="mt-6 flex items-center gap-4">
+        <AccountAvatar name={name} image={image} />
+        <div>
+          {name ? <p>{name}</p> : null}
+          {email ? <p className="text-muted">{email}</p> : null}
+        </div>
+      </div>
+    </SurfaceCard>
   );
 }
 
+function ReportsPage() {
+  return <PageTitle>{reportsMessages.title}</PageTitle>;
+}
+
+function SettingsPage() {
+  return <PageTitle>{settingsMessages.title}</PageTitle>;
+}
+
 const rootRoute = createRootRoute({
-  component: () => <Outlet />,
+  component: () => (
+    <AppShell>
+      <Outlet />
+    </AppShell>
+  ),
+});
+
+const navLayoutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  id: "nav-layout",
+  beforeLoad: async () => {
+    if (!(await hasSession())) {
+      throw redirect({ to: paths.signIn });
+    }
+  },
+  component: () => (
+    <div style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+      <AppNav />
+      <PageLayout>
+        <Outlet />
+      </PageLayout>
+    </div>
+  ),
 });
 
 const indexRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/",
-  beforeLoad: async () => {
-    if (!(await hasSession())) {
-      throw redirect({ to: "/sign-in" });
-    }
-  },
+  getParentRoute: () => navLayoutRoute,
+  path: paths.home,
   component: HomePage,
+});
+
+const scheduleRoute = createRoute({
+  getParentRoute: () => navLayoutRoute,
+  path: paths.schedule,
+  component: ScheduleRoute,
+});
+
+const reportsRoute = createRoute({
+  getParentRoute: () => navLayoutRoute,
+  path: paths.reports,
+  component: ReportsPage,
+});
+
+const settingsRoute = createRoute({
+  getParentRoute: () => navLayoutRoute,
+  path: paths.settings,
+  component: SettingsPage,
+});
+
+const accountRoute = createRoute({
+  getParentRoute: () => navLayoutRoute,
+  path: paths.account,
+  component: AccountPage,
 });
 
 const signInRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/sign-in",
+  path: paths.signIn,
   beforeLoad: async () => {
     if (await hasSession()) {
-      throw redirect({ to: "/account" });
+      throw redirect({ to: paths.account });
     }
   },
   component: SignInPage,
@@ -101,31 +174,29 @@ const signInRoute = createRoute({
 
 const signUpRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/sign-up",
+  path: paths.signUp,
   beforeLoad: async () => {
     if (await hasSession()) {
-      throw redirect({ to: "/account" });
+      throw redirect({ to: paths.account });
     }
   },
-  component: SignUpPage,
-});
-
-const accountRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/account",
-  beforeLoad: async () => {
-    if (!(await hasSession())) {
-      throw redirect({ to: "/sign-in" });
-    }
-  },
-  component: AccountPage,
+  component: () => (
+    <PageLayout>
+      <SignUpPage />
+    </PageLayout>
+  ),
 });
 
 export const routeTree = rootRoute.addChildren([
-  indexRoute,
+  navLayoutRoute.addChildren([
+    indexRoute,
+    scheduleRoute,
+    reportsRoute,
+    settingsRoute,
+    accountRoute,
+  ]),
   signInRoute,
   signUpRoute,
-  accountRoute,
 ]);
 
 export const router = createRouter({
