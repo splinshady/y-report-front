@@ -20,7 +20,8 @@
 - `src/messages/` — тексты оболочки: вход, регистрация, аккаунт
 - `src/routes/paths.ts` — пути страниц
 - `src/lib/api-paths.ts` — пути запросов к серверу, как их видит браузер
-- `src/index.css` — цветовые и размерные токены в `@theme`
+- `src/index.css` — шрифты, цвета, градиент, радиусы и отступы в `@theme`
+- `public/manifest.webmanifest` — PWA. `theme_color` и `background_color` равны `--color-canvas`
 
 Области: `team`, `schedule`, `shift-report`.
 

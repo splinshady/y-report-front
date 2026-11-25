@@ -14,4 +14,76 @@
   --spacing-gutter-md: 2rem;
   --spacing-gutter-lg: 2.5rem;
   --spacing-gutter-xl: 3rem;
+  --spacing-touch: 2.75rem;
+
+  --font-sans:
+    "SF Pro Text", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-display:
+    "SF Pro Display", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial,
+    sans-serif;
+
+  --color-canvas: #f5f5f7;
+  --color-surface: #ffffff;
+  --color-ink: #1d1d1f;
+  --color-muted: #6e6e73;
+  --color-link: #0066cc;
+  --color-accent: #810831;
+  --color-tile-rose: #ffc1db;
+  --color-tile-blue: #add8ff;
+  --color-tile-lilac: #c4b8eb;
+  --color-tile-sage: #9bceaa;
+
+  --text-display: clamp(2.5rem, 7vw, 5rem);
+  --text-display--line-height: 1.05;
+  --text-title: 1.75rem;
+  --text-title--line-height: 1.14;
+  --text-body: 1.0625rem;
+  --text-body--line-height: 1.47;
+
+  --tracking-display: -0.015em;
+  --tracking-title: 0.007em;
+  --tracking-body: -0.022em;
+
+  --radius-card: 1.75rem;
+  --radius-pill: 999px;
+
+  --background-image-hero: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-accent) 12%, white) 0%,
+    var(--color-canvas) 22rem
+  );
+}
+
+@utility page-gutter {
+  padding-left: max(var(--spacing-gutter), env(safe-area-inset-left));
+  padding-right: max(var(--spacing-gutter), env(safe-area-inset-right));
+
+  @media (width >= 40rem) {
+    padding-left: max(var(--spacing-gutter-sm), env(safe-area-inset-left));
+    padding-right: max(var(--spacing-gutter-sm), env(safe-area-inset-right));
+  }
+
+  @media (width >= 48rem) {
+    padding-left: max(var(--spacing-gutter-md), env(safe-area-inset-left));
+    padding-right: max(var(--spacing-gutter-md), env(safe-area-inset-right));
+  }
+
+  @media (width >= 64rem) {
+    padding-left: max(var(--spacing-gutter-lg), env(safe-area-inset-left));
+    padding-right: max(var(--spacing-gutter-lg), env(safe-area-inset-right));
+  }
+
+  @media (width >= 80rem) {
+    padding-left: max(var(--spacing-gutter-xl), env(safe-area-inset-left));
+    padding-right: max(var(--spacing-gutter-xl), env(safe-area-inset-right));
+  }
+}
+
+@layer base {
+  html {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    color-scheme: light;
+    -webkit-font-smoothing: antialiased;
+  }
 }
