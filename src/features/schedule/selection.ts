@@ -5,6 +5,8 @@ export type ShiftStatus = "draft" | "requested" | "approved";
 export type Assignment = {
   shift: Shift;
   status: ShiftStatus;
+  createdByName?: string;
+  approvedByName?: string | null;
 };
 
 export type ScheduleAssignments = Readonly<Record<string, Assignment>>;
@@ -96,6 +98,43 @@ export function createRequest(current: ScheduleAssignments): ScheduleAssignments
       assignment.status === "draft"
         ? { shift: assignment.shift, status: "requested" }
         : assignment;
+  }
+
+  return next;
+}
+
+export type StoredScheduleRequest = {
+  status: ShiftStatus;
+  createdByName: string;
+  approvedByName: string | null;
+  days: readonly { date: string; shift: Shift }[];
+};
+
+export function assignmentsFromRequests(
+  requests: readonly StoredScheduleRequest[],
+  drafts: ScheduleAssignments,
+): ScheduleAssignments {
+  const next: Record<string, Assignment> = {};
+
+  for (const [key, assignment] of Object.entries(drafts)) {
+    if (assignment.status === "draft") {
+      next[key] = { shift: assignment.shift, status: "draft" };
+    }
+  }
+
+  for (const request of requests) {
+    if (request.status === "draft") {
+      continue;
+    }
+
+    for (const day of request.days) {
+      next[day.date] = {
+        shift: day.shift,
+        status: request.status,
+        createdByName: request.createdByName,
+        approvedByName: request.approvedByName,
+      };
+    }
   }
 
   return next;
