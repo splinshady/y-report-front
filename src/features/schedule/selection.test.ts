@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { approveRequest, createRequest, dateKey, fillRange, isSelectable, openMonths } from "./selection";
+import {
+  approveRequest,
+  assignmentsFromRequests,
+  createRequest,
+  dateKey,
+  fillRange,
+  isSelectable,
+  openMonths,
+} from "./selection";
 
 const today = new Date(2026, 10, 25);
 
@@ -98,6 +106,33 @@ describe("selection", () => {
     expect(next[draftKey]).toEqual({ shift: "day", status: "requested" });
     expect(next[approvedKey]).toEqual({ shift: "night", status: "approved" });
     expect(current[draftKey].status).toBe("draft");
+  });
+
+  it("заявки из базы перекрывают черновик и оставляют остальные черновики", () => {
+    const savedKey = dateKey(new Date(2026, 10, 25));
+    const draftKey = dateKey(new Date(2026, 10, 26));
+    const next = assignmentsFromRequests(
+      [
+        {
+          status: "approved",
+          createdByName: "Анна",
+          approvedByName: "Борис",
+          days: [{ date: savedKey, shift: "day" }],
+        },
+      ],
+      {
+        [savedKey]: { shift: "night", status: "draft" },
+        [draftKey]: { shift: "night", status: "draft" },
+      },
+    );
+
+    expect(next[savedKey]).toEqual({
+      shift: "day",
+      status: "approved",
+      createdByName: "Анна",
+      approvedByName: "Борис",
+    });
+    expect(next[draftKey]).toEqual({ shift: "night", status: "draft" });
   });
 
   it("утверждение переводит запрос и не трогает черновик", () => {

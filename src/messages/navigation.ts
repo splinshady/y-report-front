@@ -4,4 +4,5 @@ export const navigationMessages = {
   reports: "Отчёты",
   settings: "Настройки",
   account: "Аккаунт",
+  menu: "Меню",
 } as const;

@@ -16,6 +16,7 @@ export function AppNav() {
 
   return (
     <nav
+      aria-label={navigationMessages.menu}
       className={`flex w-full flex-nowrap items-center bg-canvas font-sans text-xs sm:gap-x-6 ${pageGutterClassName}`}
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >

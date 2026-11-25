@@ -117,7 +117,7 @@ async function expectNavigation(currentLabel: (typeof tabLabels)[number]) {
     expect(link.className).not.toBe(currentLinks[0]?.className);
   }
 
-  const navigation = screen.getByRole("navigation");
+  const navigation = screen.getByRole("navigation", { name: navigationMessages.menu });
   expect(navigation.className).toContain("flex-nowrap");
   expect(navigation.className).toContain("bg-canvas");
   expect(navigation.className).toContain("font-sans");
@@ -167,7 +167,7 @@ describe("index route", () => {
 
     await renderPath(paths.home);
 
-    const navigation = await screen.findByRole("navigation");
+    const navigation = await screen.findByRole("navigation", { name: navigationMessages.menu });
     const avatarLink = screen.getByRole("link", {
       name: accountMessages.avatar(sessionUser.user.name),
     });
@@ -293,7 +293,7 @@ describe("index route", () => {
 
     expect(await screen.findByRole("heading", { name: scheduleMessages.title })).toBeTruthy();
 
-    const navigation = screen.getByRole("navigation");
+    const navigation = screen.getByRole("navigation", { name: navigationMessages.menu });
     const tabLinks = tabLabels.map((label) => within(navigation).getByRole("link", { name: label }));
     expect(tabLinks).toHaveLength(tabLabels.length);
     const scheduleTab = within(navigation).getByRole("link", { name: navigationMessages.schedule });

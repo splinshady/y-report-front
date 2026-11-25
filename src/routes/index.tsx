@@ -13,6 +13,7 @@ import { AccountAvatar } from "../components/ui/avatar";
 import { Button } from "../components/ui/button";
 import { SurfaceCard } from "../components/ui/surface-card";
 import { DisplayTitle, PageTitle, textLinkClassName } from "../components/ui/type";
+import { scheduleApi } from "../features/schedule/api";
 import { scheduleMessages } from "../features/schedule/messages";
 import { SchedulePage } from "../features/schedule/schedule-page";
 import { authClient, signInWithYandex } from "../lib/auth-client";
@@ -44,7 +45,7 @@ function HomePage() {
 }
 
 function ScheduleRoute() {
-  return <SchedulePage today={new Date()} />;
+  return <SchedulePage today={new Date()} api={scheduleApi} />;
 }
 
 function SignInPage() {
