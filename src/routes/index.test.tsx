@@ -7,6 +7,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { appShellClassName } from "../components/app-shell";
 import { pageGutterClassName } from "../components/page-layout";
+import { scheduleMessages } from "../features/schedule/messages";
 import { accountMessages } from "../messages/account";
 import { homeMessages } from "../messages/home";
 import { navigationMessages } from "../messages/navigation";
@@ -265,6 +266,44 @@ describe("index route", () => {
       within(card as HTMLElement).getByLabelText(accountMessages.avatar(sessionUser.user.name))
         .textContent,
     ).toBe("МС");
+  });
+
+  it("при сессии с главной открывается расписание", async () => {
+    sessionState.current = sessionUser;
+
+    const router = await renderPath(paths.home);
+    expect(await screen.findByText(homeMessages.ready)).toBeTruthy();
+
+    const link = await screen.findByRole("link", { name: scheduleMessages.open });
+    expect(link.getAttribute("href")).toBe(paths.schedule);
+
+    fireEvent.click(link);
+    await router.load();
+
+    expect(router.state.location.pathname).toBe(paths.schedule);
+    expect(await screen.findByRole("heading", { name: scheduleMessages.title })).toBeTruthy();
+  });
+
+  it("прямой путь расписания показывает заголовок и прежние четыре вкладки", async () => {
+    sessionState.current = sessionUser;
+
+    await renderPath(paths.schedule);
+
+    expect(await screen.findByRole("heading", { name: scheduleMessages.title })).toBeTruthy();
+
+    const navigation = screen.getByRole("navigation");
+    const tabLinks = tabLabels.map((label) => within(navigation).getByRole("link", { name: label }));
+    expect(tabLinks).toHaveLength(4);
+    expect(within(navigation).queryByRole("link", { name: scheduleMessages.title })).toBeNull();
+    expect(within(navigation).queryByRole("link", { name: scheduleMessages.open })).toBeNull();
+  });
+
+  it("без сессии расписание ведёт на вход", async () => {
+    const router = await renderPath(paths.schedule);
+
+    expect(router.state.location.pathname).toBe(paths.signIn);
+    expect(await screen.findByRole("button", { name: signInMessages.submit })).toBeTruthy();
+    expectNoNavigation();
   });
 
   it("на аккаунте показывает фото из сессии", async () => {

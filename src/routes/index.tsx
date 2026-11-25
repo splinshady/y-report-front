@@ -13,6 +13,8 @@ import { AccountAvatar } from "../components/ui/avatar";
 import { Button } from "../components/ui/button";
 import { SurfaceCard } from "../components/ui/surface-card";
 import { DisplayTitle, PageTitle, textLinkClassName } from "../components/ui/type";
+import { scheduleMessages } from "../features/schedule/messages";
+import { SchedulePage } from "../features/schedule/schedule-page";
 import { authClient, signInWithYandex } from "../lib/auth-client";
 import { accountMessages } from "../messages/account";
 import { homeMessages } from "../messages/home";
@@ -28,7 +30,21 @@ async function hasSession() {
 }
 
 function HomePage() {
-  return <p>{homeMessages.ready}</p>;
+  return (
+    <>
+      <p>{homeMessages.ready}</p>
+      <Link
+        to={paths.schedule}
+        className={`mt-4 inline-flex min-h-touch items-center ${textLinkClassName}`}
+      >
+        {scheduleMessages.open}
+      </Link>
+    </>
+  );
+}
+
+function ScheduleRoute() {
+  return <SchedulePage today={new Date()} />;
 }
 
 function SignInPage() {
@@ -120,6 +136,12 @@ const indexRoute = createRoute({
   component: HomePage,
 });
 
+const scheduleRoute = createRoute({
+  getParentRoute: () => navLayoutRoute,
+  path: paths.schedule,
+  component: ScheduleRoute,
+});
+
 const reportsRoute = createRoute({
   getParentRoute: () => navLayoutRoute,
   path: paths.reports,
@@ -165,7 +187,13 @@ const signUpRoute = createRoute({
 });
 
 export const routeTree = rootRoute.addChildren([
-  navLayoutRoute.addChildren([indexRoute, reportsRoute, settingsRoute, accountRoute]),
+  navLayoutRoute.addChildren([
+    indexRoute,
+    scheduleRoute,
+    reportsRoute,
+    settingsRoute,
+    accountRoute,
+  ]),
   signInRoute,
   signUpRoute,
 ]);
