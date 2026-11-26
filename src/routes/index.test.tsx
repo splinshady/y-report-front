@@ -18,14 +18,43 @@ import { signUpMessages } from "../messages/sign-up";
 import { routeTree } from "./index";
 import { paths } from "./paths";
 
-const { signInSocial, sessionState, clientOptions } = vi.hoisted(() => ({
-  signInSocial: vi.fn(),
-  sessionState: {
-    current: null as { user: { name: string; email: string; image?: string | null } } | null,
-  },
-  clientOptions: {
-    current: null as { baseURL?: string } | null,
-  },
+const { signInSocial, sessionState, clientOptions, taxiParkState } = vi.hoisted(() => {
+  const membership: {
+    current: { taxiParkId: string; name: string; role: "owner" | "worker" } | null;
+  } = { current: null };
+
+  return {
+    signInSocial: vi.fn(),
+    sessionState: {
+      current: null as {
+        user: { id: string; name: string; email: string; image?: string | null };
+      } | null,
+    },
+    clientOptions: {
+      current: null as { baseURL?: string } | null,
+    },
+    taxiParkState: {
+      membership,
+      createTaxiPark: vi.fn(async (name: string) => {
+        const created = { taxiParkId: "park-1", name, role: "owner" as const };
+        membership.current = created;
+        return created;
+      }),
+      inviteWorker: vi.fn(async () => ({
+        taxiParkId: "park-1",
+        name: "North",
+        role: "worker" as const,
+      })),
+    },
+  };
+});
+
+vi.mock("../lib/taxi-park", () => ({
+  loadTaxiParkMembership: async () => taxiParkState.membership.current,
+  createTaxiPark: (name: string) =>
+    (taxiParkState.createTaxiPark as (parkName: string) => Promise<unknown>)(name),
+  inviteWorker: (userId: string) =>
+    (taxiParkState.inviteWorker as (id: string) => Promise<unknown>)(userId),
 }));
 
 vi.mock("better-auth/react", () => ({
@@ -57,15 +86,34 @@ const yandexSignIn = {
 
 const sessionUser = {
   user: {
+    id: "user-maria",
     name: "Мария Соколова",
     email: "maria@example.com",
   },
+};
+
+const ownerMembership = {
+  taxiParkId: "park-1",
+  name: "Северный",
+  role: "owner" as const,
+};
+
+const workerMembership = {
+  taxiParkId: "park-1",
+  name: "Северный",
+  role: "worker" as const,
 };
 
 const tabLabels = [
   navigationMessages.home,
   navigationMessages.schedule,
   navigationMessages.reports,
+  navigationMessages.settings,
+  navigationMessages.account,
+] as const;
+
+const shellTabLabels = [
+  navigationMessages.home,
   navigationMessages.settings,
   navigationMessages.account,
 ] as const;
@@ -91,10 +139,13 @@ function expectNoNavigation() {
   }
 }
 
-async function expectNavigation(currentLabel: (typeof tabLabels)[number]) {
+async function expectNavigation(
+  currentLabel: (typeof tabLabels)[number],
+  labels: readonly string[] = tabLabels,
+) {
   const links = [];
 
-  for (const label of tabLabels) {
+  for (const label of labels) {
     links.push(await screen.findByRole("link", { name: label }));
   }
 
@@ -132,6 +183,9 @@ describe("index route", () => {
     cleanup();
     signInSocial.mockClear();
     sessionState.current = null;
+    taxiParkState.membership.current = null;
+    taxiParkState.createTaxiPark.mockClear();
+    taxiParkState.inviteWorker.mockClear();
   });
 
   it("при сессии / показывает текст основы клиента", async () => {
@@ -146,6 +200,7 @@ describe("index route", () => {
 
   it("на четырёх экранах четыре вкладки, текущая одна и отличается", async () => {
     sessionState.current = sessionUser;
+    taxiParkState.membership.current = ownerMembership;
 
     const screens = [
       { path: paths.home, current: navigationMessages.home },
@@ -179,6 +234,7 @@ describe("index route", () => {
 
   it("у отчётов и настроек есть свой заголовок", async () => {
     sessionState.current = sessionUser;
+    taxiParkState.membership.current = ownerMembership;
 
     await renderPath(paths.reports);
     expect(
@@ -262,6 +318,8 @@ describe("index route", () => {
 
     expect(await screen.findByText("Мария Соколова")).toBeTruthy();
     expect(screen.getByText("maria@example.com")).toBeTruthy();
+    expect(screen.getByText(accountMessages.userId)).toBeTruthy();
+    expect(screen.getByText(sessionUser.user.id)).toBeTruthy();
     const card = screen.getByRole("heading", { name: accountMessages.title }).closest("section");
     expect(card).toBeTruthy();
     expect(
@@ -272,6 +330,7 @@ describe("index route", () => {
 
   it("при сессии с главной открывается расписание", async () => {
     sessionState.current = sessionUser;
+    taxiParkState.membership.current = ownerMembership;
 
     const router = await renderPath(paths.home);
     expect(await screen.findByText(homeMessages.ready)).toBeTruthy();
@@ -288,6 +347,7 @@ describe("index route", () => {
 
   it("прямой путь расписания показывает заголовок и вкладку расписания", async () => {
     sessionState.current = sessionUser;
+    taxiParkState.membership.current = ownerMembership;
 
     await renderPath(paths.schedule);
 
@@ -320,5 +380,109 @@ describe("index route", () => {
       name: accountMessages.avatar(sessionUser.user.name),
     });
     expect(avatar.getAttribute("src")).toBe(image);
+  });
+
+  it("без таксопарка скрывает расписание и отчёты и не открывает их страницы", async () => {
+    sessionState.current = sessionUser;
+
+    await renderPath(paths.home);
+    expect(await screen.findByText(homeMessages.ready)).toBeTruthy();
+    expect(screen.queryByRole("link", { name: scheduleMessages.open })).toBeNull();
+    expect(screen.queryByRole("link", { name: navigationMessages.schedule })).toBeNull();
+    expect(screen.queryByRole("link", { name: navigationMessages.reports })).toBeNull();
+    await expectNavigation(navigationMessages.home, shellTabLabels);
+    cleanup();
+
+    const schedule = await renderPath(paths.schedule);
+    expect(schedule.state.location.pathname).toBe(paths.home);
+    expect(await screen.findByText(homeMessages.ready)).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: scheduleMessages.title })).toBeNull();
+    expect(document.querySelector("[data-slot=calendar]")).toBeNull();
+    cleanup();
+
+    const reports = await renderPath(paths.reports);
+    expect(reports.state.location.pathname).toBe(paths.home);
+    expect(await screen.findByText(homeMessages.ready)).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: reportsMessages.title })).toBeNull();
+  });
+
+  it("пустые настройки создают таксопарк и показывают разделы владельца", async () => {
+    sessionState.current = sessionUser;
+
+    const router = await renderPath(paths.settings);
+    const name = await screen.findByRole("textbox", { name: settingsMessages.parkName });
+    const create = screen.getByRole("button", { name: settingsMessages.createPark });
+    expect(name.className).toContain("min-h-touch");
+    expect(create.className).toContain("min-h-touch");
+    expect(screen.queryByRole("button", { name: settingsMessages.invite })).toBeNull();
+
+    fireEvent.change(name, { target: { value: "   " } });
+    fireEvent.click(create);
+    expect(taxiParkState.createTaxiPark).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: settingsMessages.createPark })).toBeTruthy();
+
+    fireEvent.change(name, { target: { value: "  Северный  " } });
+    fireEvent.click(create);
+    expect(await screen.findByText("Северный")).toBeTruthy();
+    await router.load();
+
+    expect(taxiParkState.createTaxiPark).toHaveBeenCalledWith("Северный");
+    expect(screen.queryByRole("button", { name: settingsMessages.createPark })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: settingsMessages.parkName })).toBeNull();
+    expect(screen.getByRole("textbox", { name: settingsMessages.userId }).className).toContain("min-h-touch");
+    expect(screen.getByRole("button", { name: settingsMessages.invite })).toBeTruthy();
+    expect(screen.getByRole("link", { name: navigationMessages.schedule })).toBeTruthy();
+    expect(screen.getByRole("link", { name: navigationMessages.reports })).toBeTruthy();
+
+    taxiParkState.inviteWorker.mockRejectedValueOnce(new Error("missing"));
+    fireEvent.change(screen.getByRole("textbox", { name: settingsMessages.userId }), {
+      target: { value: "missing-user" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: settingsMessages.invite }));
+    await router.load();
+
+    expect(taxiParkState.inviteWorker).toHaveBeenCalledWith("missing-user");
+    expect(screen.getByRole("heading", { name: settingsMessages.title })).toBeTruthy();
+    expect(router.state.location.pathname).toBe(paths.settings);
+  });
+
+  it("у владельца есть название и приглашение, второго таксопарка нет", async () => {
+    sessionState.current = sessionUser;
+    taxiParkState.membership.current = ownerMembership;
+
+    await renderPath(paths.settings);
+
+    expect(await screen.findByText(ownerMembership.name)).toBeTruthy();
+    expect(screen.getByRole("button", { name: settingsMessages.invite })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: settingsMessages.createPark })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: settingsMessages.parkName })).toBeNull();
+    expect(screen.getAllByRole("textbox")).toHaveLength(1);
+  });
+
+  it("работник видит разделы парка и не видит формы настроек", async () => {
+    sessionState.current = sessionUser;
+    taxiParkState.membership.current = workerMembership;
+
+    await renderPath(paths.home);
+    expect(await screen.findByRole("link", { name: scheduleMessages.open })).toBeTruthy();
+    expect(screen.getByRole("link", { name: navigationMessages.schedule })).toBeTruthy();
+    expect(screen.getByRole("link", { name: navigationMessages.reports })).toBeTruthy();
+    cleanup();
+
+    const schedule = await renderPath(paths.schedule);
+    expect(schedule.state.location.pathname).toBe(paths.schedule);
+    expect(await screen.findByRole("heading", { name: scheduleMessages.title })).toBeTruthy();
+    cleanup();
+
+    const reports = await renderPath(paths.reports);
+    expect(reports.state.location.pathname).toBe(paths.reports);
+    expect(await screen.findByRole("heading", { name: reportsMessages.title })).toBeTruthy();
+    cleanup();
+
+    await renderPath(paths.settings);
+    expect(await screen.findByRole("heading", { name: settingsMessages.title })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: settingsMessages.createPark })).toBeNull();
+    expect(screen.queryByRole("button", { name: settingsMessages.invite })).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
   });
 });
