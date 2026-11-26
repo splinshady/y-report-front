@@ -16,6 +16,7 @@ const scheduleActorSchema = z.object({
 export const scheduleRequestSchema = z.object({
   id: z.string(),
   taxiParkId: z.string(),
+  carId: z.string(),
   status: z.enum(["requested", "approved", "rejected"]),
   createdBy: scheduleActorSchema,
   approvedBy: scheduleActorSchema.nullable(),
@@ -30,8 +31,8 @@ export const scheduleRequestsResponseSchema = z.object({
 export type ScheduleRequest = z.infer<typeof scheduleRequestSchema>;
 
 export type ScheduleApi = {
-  load: () => Promise<ScheduleRequest[]>;
-  create: (days: ScheduleRequest["days"]) => Promise<ScheduleRequest>;
+  load: (carId: string) => Promise<ScheduleRequest[]>;
+  create: (carId: string, days: ScheduleRequest["days"]) => Promise<ScheduleRequest>;
   approve: (requestId: string) => Promise<ScheduleRequest>;
   reject: (requestId: string) => Promise<ScheduleRequest>;
   remove: (requestId: string) => Promise<void>;
@@ -46,17 +47,17 @@ async function readJson(response: Response): Promise<unknown> {
 }
 
 export const scheduleApi: ScheduleApi = {
-  async load() {
-    const response = await fetch(apiPaths.scheduleRequests, { credentials: "include" });
+  async load(carId) {
+    const response = await fetch(apiPaths.scheduleRequestsForCar(carId), { credentials: "include" });
     const body = scheduleRequestsResponseSchema.parse(await readJson(response));
     return body.requests;
   },
-  async create(days) {
+  async create(carId, days) {
     const response = await fetch(apiPaths.scheduleRequests, {
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ days }),
+      body: JSON.stringify({ carId, days }),
     });
     return scheduleRequestSchema.parse(await readJson(response));
   },

@@ -1,5 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { type Car, type CarsApi } from "../cars/api";
+import { carsMessages } from "../cars/messages";
 import { type ScheduleApi, type ScheduleRequest } from "./api";
 import { scheduleMessages } from "./messages";
 import { SchedulePage } from "./schedule-page";
@@ -7,16 +9,51 @@ import { SchedulePage } from "./schedule-page";
 const today = new Date(2026, 10, 25);
 const creatorName = "Анна";
 const approverName = "Борис";
+const defaultCarId = "car-1";
+const defaultPlate = "А777АА77";
+
+function createMemoryCars(initial: Car[] = [{ id: defaultCarId, plate: defaultPlate, hasPhoto: false }]): CarsApi {
+  let cars = initial.map((car) => ({ ...car }));
+
+  return {
+    list: async () => cars.map((car) => ({ ...car })),
+    create: async ({ plate, photo }) => {
+      const car = { id: `car-${cars.length + 1}`, plate, hasPhoto: photo != null };
+      cars = [...cars, car];
+      return { ...car };
+    },
+    update: async (carId, input) => {
+      const car = cars.find((item) => item.id === carId);
+      if (!car) {
+        throw new Error("missing");
+      }
+      car.plate = input.plate;
+      if (input.photo.state === "replace") {
+        car.hasPhoto = true;
+      }
+      if (input.photo.state === "remove") {
+        car.hasPhoto = false;
+      }
+      return { ...car };
+    },
+    remove: async (carId) => {
+      cars = cars.filter((item) => item.id !== carId);
+    },
+    readPhoto: async () => null,
+  };
+}
 
 function createMemoryApi(initial: ScheduleRequest[] = []): ScheduleApi {
   let requests = initial.map((request) => structuredClone(request));
 
   return {
-    load: async () => requests.map((request) => structuredClone(request)),
-    create: async (days) => {
+    load: async (carId) =>
+      requests.filter((request) => request.carId === carId).map((request) => structuredClone(request)),
+    create: async (carId, days) => {
       const request: ScheduleRequest = {
         id: `request-${requests.length + 1}`,
         taxiParkId: "default",
+        carId,
         status: "requested",
         createdBy: { id: "creator", name: creatorName },
         approvedBy: null,
@@ -64,11 +101,34 @@ function createMemoryApi(initial: ScheduleRequest[] = []): ScheduleApi {
   };
 }
 
-async function renderSchedule(api: ScheduleApi = createMemoryApi(), canApprove = true) {
-  render(<SchedulePage today={today} api={api} canApprove={canApprove} />);
+async function renderSchedule(
+  api: ScheduleApi = createMemoryApi(),
+  canApprove = true,
+  carsApi: CarsApi = createMemoryCars(),
+  selectCar = true,
+) {
+  render(
+    <SchedulePage
+      today={today}
+      api={api}
+      carsApi={carsApi}
+      canApprove={canApprove}
+      canManageCars={canApprove}
+    />,
+  );
   await act(async () => {
-    await Promise.resolve();
+    for (let step = 0; step < 8; step += 1) {
+      await Promise.resolve();
+    }
   });
+  if (selectCar) {
+    fireEvent.click(screen.getByRole("button", { name: defaultPlate }));
+    await act(async () => {
+      for (let step = 0; step < 8; step += 1) {
+        await Promise.resolve();
+      }
+    });
+  }
 }
 
 async function settle() {
@@ -419,6 +479,7 @@ describe("SchedulePage", () => {
         {
           id: "saved",
           taxiParkId: "default",
+          carId: defaultCarId,
           status: "approved",
           createdBy: { id: "creator", name: creatorName },
           approvedBy: { id: "approver", name: approverName },
@@ -443,6 +504,7 @@ describe("SchedulePage", () => {
         {
           id: "saved",
           taxiParkId: "park-1",
+          carId: defaultCarId,
           status: "requested",
           createdBy: { id: "creator", name: creatorName },
           approvedBy: null,
@@ -452,6 +514,10 @@ describe("SchedulePage", () => {
       ]),
       false,
     );
+
+    expect(screen.queryByRole("button", { name: carsMessages.addCar })).toBeNull();
+    expect(screen.queryByRole("button", { name: carsMessages.save })).toBeNull();
+    expect(screen.queryByRole("button", { name: carsMessages.deleteCar })).toBeNull();
 
     const request = screen.getByRole("listitem");
     expect(within(request).queryByRole("button", { name: scheduleMessages.confirm })).toBeNull();
@@ -466,5 +532,70 @@ describe("SchedulePage", () => {
     fireEvent.click(screen.getByRole("button", { name: scheduleMessages.remove }));
     await settle();
     expect(screen.queryByRole("listitem")).toBeNull();
+  });
+
+  it("календарь открывается у выбранной машины и заявка остаётся на ней", async () => {
+    const firstPlate = "А111АА11";
+    const secondPlate = "В222ВВ22";
+    const api = createMemoryApi();
+    const carsApi = createMemoryCars([
+      { id: "car-1", plate: firstPlate, hasPhoto: false },
+      { id: "car-2", plate: secondPlate, hasPhoto: false },
+    ]);
+    await renderSchedule(api, true, carsApi, false);
+
+    expect(screen.getAllByRole("heading", { name: scheduleMessages.title })).toHaveLength(1);
+    expect(document.querySelector("[data-slot=calendar]")).toBeNull();
+    expect(screen.getByRole("button", { name: carsMessages.addCar })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: firstPlate }));
+    await settle();
+    fireEvent.click(dayButton(today));
+    expect(dayButton(today).className).toContain("bg-tile-blue");
+
+    fireEvent.click(screen.getByRole("button", { name: secondPlate }));
+    await settle();
+    expect(dayButton(today).className).not.toContain("bg-tile-blue");
+    expect(screen.queryByText(scheduleMessages.requestLine(today, "day"))).toBeNull();
+
+    fireEvent.click(dayButton(today));
+    fireEvent.click(modeButton(scheduleMessages.createRequest));
+    await settle();
+    expect(screen.getByText(scheduleMessages.requestLine(today, "day"))).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: firstPlate }));
+    await settle();
+    expect(screen.queryByText(scheduleMessages.requestLine(today, "day"))).toBeNull();
+    expect(dayButton(today).className).not.toContain("bg-tile-sage");
+
+    fireEvent.click(screen.getByRole("button", { name: secondPlate }));
+    await settle();
+    expect(screen.getByText(scheduleMessages.requestLine(today, "day"))).toBeTruthy();
+    expect(dayButton(today).className).toContain("bg-tile-sage");
+  });
+
+  it("удаление машины убирает календарь и её заявки", async () => {
+    await renderSchedule(
+      createMemoryApi([
+        {
+          id: "saved",
+          taxiParkId: "default",
+          carId: defaultCarId,
+          status: "requested",
+          createdBy: { id: "creator", name: creatorName },
+          approvedBy: null,
+          rejectedBy: null,
+          days: [{ date: "2026-11-25", shift: "day" }],
+        },
+      ]),
+    );
+
+    expect(screen.getByText(scheduleMessages.requestLine(today, "day"))).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: carsMessages.deleteCar }));
+    await settle();
+
+    expect(screen.queryByRole("button", { name: defaultPlate })).toBeNull();
+    expect(document.querySelector("[data-slot=calendar]")).toBeNull();
+    expect(screen.queryByText(scheduleMessages.requestLine(today, "day"))).toBeNull();
   });
 });

@@ -15,6 +15,7 @@ describe("scheduleApi", () => {
           JSON.stringify({
             id: "request-1",
             taxiParkId: "default",
+            carId: "car-1",
             status: "requested",
             createdBy: { id: "user-1", name: "Анна" },
             approvedBy: null,
@@ -30,6 +31,7 @@ describe("scheduleApi", () => {
           JSON.stringify({
             id: "request-1",
             taxiParkId: "default",
+            carId: "car-1",
             status: "approved",
             createdBy: { id: "user-1", name: "Анна" },
             approvedBy: { id: "user-2", name: "Борис" },
@@ -44,18 +46,21 @@ describe("scheduleApi", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    expect(await scheduleApi.load()).toEqual([]);
-    const created = await scheduleApi.create([{ date: "2026-11-25", shift: "day" }]);
+    expect(await scheduleApi.load("car-1")).toEqual([]);
+    const created = await scheduleApi.create("car-1", [{ date: "2026-11-25", shift: "day" }]);
     expect(created.createdBy.name).toBe("Анна");
+    expect(created.carId).toBe("car-1");
     const approved = await scheduleApi.approve("request-1");
     expect(approved.approvedBy?.name).toBe("Борис");
 
-    expect(fetchMock).toHaveBeenNthCalledWith(1, apiPaths.scheduleRequests, { credentials: "include" });
+    expect(fetchMock).toHaveBeenNthCalledWith(1, apiPaths.scheduleRequestsForCar("car-1"), {
+      credentials: "include",
+    });
     expect(fetchMock).toHaveBeenNthCalledWith(2, apiPaths.scheduleRequests, {
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ days: [{ date: "2026-11-25", shift: "day" }] }),
+      body: JSON.stringify({ carId: "car-1", days: [{ date: "2026-11-25", shift: "day" }] }),
     });
     expect(fetchMock).toHaveBeenNthCalledWith(3, apiPaths.scheduleRequestApprove("request-1"), {
       method: "POST",
