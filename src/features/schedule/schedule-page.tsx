@@ -188,7 +188,15 @@ function requestDays(group: DraftGroup) {
     .map(([date, groupShift]) => ({ date, shift: groupShift }));
 }
 
-export function SchedulePage({ today, api }: { today: Date; api: ScheduleApi }) {
+export function SchedulePage({
+  today,
+  api,
+  canApprove,
+}: {
+  today: Date;
+  api: ScheduleApi;
+  canApprove: boolean;
+}) {
   const months = openMonths(today);
   const [visibleMonth, setVisibleMonth] = useState<CalendarMonth>(months[0]);
   const [shift, setShift] = useState<Shift>("day");
@@ -528,14 +536,16 @@ export function SchedulePage({ today, api }: { today: Date; api: ScheduleApi }) 
                 )}
               </p>
               <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className={actionClassName()}
-                  disabled={saving || request.status !== "requested"}
-                  onClick={() => void changeRequest(request.id, "approve")}
-                >
-                  {scheduleMessages.confirm}
-                </button>
+                {canApprove ? (
+                  <button
+                    type="button"
+                    className={actionClassName()}
+                    disabled={saving || request.status !== "requested"}
+                    onClick={() => void changeRequest(request.id, "approve")}
+                  >
+                    {scheduleMessages.confirm}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className={quietActionClassName()}

@@ -9,7 +9,7 @@ import { pageGutterClassName } from "./page-layout";
 const navItemClassName =
   "flex min-h-touch min-w-0 flex-1 items-center justify-center whitespace-nowrap sm:flex-none";
 
-export function AppNav() {
+export function AppNav({ hasTaxiPark }: { hasTaxiPark: boolean }) {
   const { data } = authClient.useSession();
   const name = data?.user.name;
   const avatarLabel = name ? accountMessages.avatar(name) : accountMessages.avatarFallback;
@@ -30,22 +30,26 @@ export function AppNav() {
       >
         {navigationMessages.home}
       </Link>
-      <Link
-        to={paths.schedule}
-        className={navItemClassName}
-        activeProps={{ className: "font-medium text-ink" }}
-        inactiveProps={{ className: "text-muted" }}
-      >
-        {navigationMessages.schedule}
-      </Link>
-      <Link
-        to={paths.reports}
-        className={navItemClassName}
-        activeProps={{ className: "font-medium text-ink" }}
-        inactiveProps={{ className: "text-muted" }}
-      >
-        {navigationMessages.reports}
-      </Link>
+      {hasTaxiPark ? (
+        <Link
+          to={paths.schedule}
+          className={navItemClassName}
+          activeProps={{ className: "font-medium text-ink" }}
+          inactiveProps={{ className: "text-muted" }}
+        >
+          {navigationMessages.schedule}
+        </Link>
+      ) : null}
+      {hasTaxiPark ? (
+        <Link
+          to={paths.reports}
+          className={navItemClassName}
+          activeProps={{ className: "font-medium text-ink" }}
+          inactiveProps={{ className: "text-muted" }}
+        >
+          {navigationMessages.reports}
+        </Link>
+      ) : null}
       <Link
         to={paths.settings}
         className={navItemClassName}

@@ -64,8 +64,8 @@ function createMemoryApi(initial: ScheduleRequest[] = []): ScheduleApi {
   };
 }
 
-async function renderSchedule(api: ScheduleApi = createMemoryApi()) {
-  render(<SchedulePage today={today} api={api} />);
+async function renderSchedule(api: ScheduleApi = createMemoryApi(), canApprove = true) {
+  render(<SchedulePage today={today} api={api} canApprove={canApprove} />);
   await act(async () => {
     await Promise.resolve();
   });
@@ -435,5 +435,36 @@ describe("SchedulePage", () => {
     expect(within(saved).getByRole("button", { name: scheduleMessages.confirm })).toBeTruthy();
     expect(within(saved).getByRole("button", { name: scheduleMessages.reject })).toBeTruthy();
     expect(within(saved).getByRole("button", { name: scheduleMessages.remove })).toBeTruthy();
+  });
+
+  it("работник не видит подтверждение, отклонение и удаление остаются", async () => {
+    await renderSchedule(
+      createMemoryApi([
+        {
+          id: "saved",
+          taxiParkId: "park-1",
+          status: "requested",
+          createdBy: { id: "creator", name: creatorName },
+          approvedBy: null,
+          rejectedBy: null,
+          days: [{ date: "2026-11-25", shift: "day" }],
+        },
+      ]),
+      false,
+    );
+
+    const request = screen.getByRole("listitem");
+    expect(within(request).queryByRole("button", { name: scheduleMessages.confirm })).toBeNull();
+    expect(within(request).getByRole("button", { name: scheduleMessages.reject })).toBeTruthy();
+    expect(within(request).getByRole("button", { name: scheduleMessages.remove })).toBeTruthy();
+
+    fireEvent.click(within(request).getByRole("button", { name: scheduleMessages.reject }));
+    await settle();
+    expect(screen.getByText(scheduleMessages.peopleLine(creatorName, null, approverName))).toBeTruthy();
+    expect(screen.queryByRole("button", { name: scheduleMessages.confirm })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: scheduleMessages.remove }));
+    await settle();
+    expect(screen.queryByRole("listitem")).toBeNull();
   });
 });
