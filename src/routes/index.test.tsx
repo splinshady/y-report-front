@@ -9,6 +9,7 @@ import { appShellClassName } from "../components/app-shell";
 import { pageGutterClassName } from "../components/page-layout";
 import { carsMessages } from "../features/cars/messages";
 import { scheduleMessages } from "../features/schedule/messages";
+import { shiftReportMessages } from "../features/shift-report/messages";
 import { accountMessages } from "../messages/account";
 import { homeMessages } from "../messages/home";
 import { navigationMessages } from "../messages/navigation";
@@ -49,6 +50,20 @@ const { signInSocial, sessionState, clientOptions, taxiParkState, carsState } = 
     },
     carsState: {
       current: [] as { id: string; plate: string; hasPhoto: boolean }[],
+    },
+  };
+});
+
+vi.mock("../features/shift-report/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../features/shift-report/api")>();
+  return {
+    ...actual,
+    shiftReportApi: {
+      read: async () => null,
+      create: async () => {
+        throw new Error("create");
+      },
+      readPhoto: async () => null,
     },
   };
 });
@@ -425,6 +440,11 @@ describe("index route", () => {
     expect(reports.state.location.pathname).toBe(paths.home);
     expect(await screen.findByText(homeMessages.ready)).toBeTruthy();
     expect(screen.queryByRole("heading", { name: reportsMessages.title })).toBeNull();
+    cleanup();
+
+    const shiftReport = await renderPath(paths.shiftReport.replace("$carId", "car-1"));
+    expect(shiftReport.state.location.pathname).toBe(paths.home);
+    expect(screen.queryByRole("button", { name: shiftReportMessages.create })).toBeNull();
   });
 
   it("пустые настройки создают таксопарк и показывают разделы владельца", async () => {
@@ -507,37 +527,34 @@ describe("index route", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
-  it("отчёты показывают номер выбранной машины без кнопок изменения", async () => {
+  it("клик по машине открывает страницу отчёта без кнопок изменения", async () => {
     sessionState.current = sessionUser;
     carsState.current = [
       { id: "car-1", plate: "А001АА77", hasPhoto: false },
       { id: "car-2", plate: "В002ВВ77", hasPhoto: false },
     ];
 
-    taxiParkState.membership.current = ownerMembership;
-    await renderPath(paths.reports);
-    expect(await screen.findByRole("heading", { name: reportsMessages.title })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: carsMessages.addCar })).toBeNull();
-    expect(screen.queryByRole("button", { name: carsMessages.save })).toBeNull();
-    expect(screen.queryByRole("button", { name: carsMessages.deleteCar })).toBeNull();
+    for (const membership of [ownerMembership, workerMembership]) {
+      taxiParkState.membership.current = membership;
+      const reports = await renderPath(paths.reports);
+      expect(await screen.findByRole("heading", { name: reportsMessages.title })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: carsMessages.addCar })).toBeNull();
+      expect(screen.queryByRole("button", { name: carsMessages.save })).toBeNull();
+      expect(screen.queryByRole("button", { name: carsMessages.deleteCar })).toBeNull();
 
-    const ownerFirst = await screen.findByRole("button", { name: "А001АА77" });
-    const ownerSecond = screen.getByRole("button", { name: "В002ВВ77" });
-    fireEvent.click(ownerSecond);
-    expect(ownerSecond.getAttribute("aria-pressed")).toBe("true");
-    expect(ownerFirst.getAttribute("aria-pressed")).toBe("false");
-    cleanup();
+      fireEvent.click(await screen.findByRole("button", { name: "В002ВВ77" }));
+      await reports.load();
 
-    taxiParkState.membership.current = workerMembership;
-    await renderPath(paths.reports);
-    expect(await screen.findByRole("heading", { name: reportsMessages.title })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: carsMessages.addCar })).toBeNull();
-    expect(screen.queryByRole("button", { name: carsMessages.save })).toBeNull();
-    expect(screen.queryByRole("button", { name: carsMessages.deleteCar })).toBeNull();
-    const workerSecond = await screen.findByRole("button", { name: "В002ВВ77" });
-    fireEvent.click(workerSecond);
-    expect(workerSecond.getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByRole("button", { name: "А001АА77" }).getAttribute("aria-pressed")).toBe("false");
+      expect(reports.state.location.pathname).toBe(paths.shiftReport.replace("$carId", "car-2"));
+      expect(await screen.findByText("В002ВВ77")).toBeTruthy();
+      expect(screen.getByRole("button", { name: shiftReportMessages.day })).toBeTruthy();
+      expect(screen.getByRole("button", { name: shiftReportMessages.night })).toBeTruthy();
+      expect(screen.getByRole("button", { name: shiftReportMessages.create })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: carsMessages.addCar })).toBeNull();
+      expect(screen.queryByRole("button", { name: carsMessages.save })).toBeNull();
+      expect(screen.queryByRole("button", { name: carsMessages.deleteCar })).toBeNull();
+      cleanup();
+    }
   });
 
   it("расписание показывает список машин и календарь только после выбора", async () => {

@@ -1,4 +1,5 @@
 const scheduleRequestsPath = "/api/schedule/requests";
+const shiftReportsPath = "/api/shift-reports";
 
 export const apiPaths = {
   taxiPark: "/api/taxi-park",
@@ -15,4 +16,9 @@ export const apiPaths = {
     `/api/schedule/requests/${encodeURIComponent(requestId)}/reject`,
   scheduleRequestDelete: (requestId: string) =>
     `/api/schedule/requests/${encodeURIComponent(requestId)}`,
+  shiftReports: shiftReportsPath,
+  shiftReport: (carId: string, date: string, shift: string) =>
+    `${shiftReportsPath}?carId=${encodeURIComponent(carId)}&date=${encodeURIComponent(date)}&shift=${encodeURIComponent(shift)}`,
+  shiftReportPhoto: (reportId: string, slot: number) =>
+    `${shiftReportsPath}/${encodeURIComponent(reportId)}/photos/${encodeURIComponent(String(slot))}`,
 } as const;

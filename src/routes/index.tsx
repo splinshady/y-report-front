@@ -20,6 +20,8 @@ import { CarsScreen } from "../features/cars/cars-screen";
 import { scheduleApi } from "../features/schedule/api";
 import { scheduleMessages } from "../features/schedule/messages";
 import { SchedulePage } from "../features/schedule/schedule-page";
+import { shiftReportApi } from "../features/shift-report/api";
+import { ShiftReportPage } from "../features/shift-report/shift-report-page";
 import { authClient, signInWithYandex } from "../lib/auth-client";
 import { createTaxiPark, inviteWorker, loadTaxiParkMembership } from "../lib/taxi-park";
 import { accountMessages } from "../messages/account";
@@ -127,16 +129,33 @@ function AccountPage() {
 }
 
 function ReportsPage() {
-  const [selectedCarId, setSelectedCarId] = useState<string | null>(null);
+  const router = useRouter();
 
   return (
     <>
       <PageTitle>{reportsMessages.title}</PageTitle>
       <div className="mt-6">
-        <CarsScreen api={carsApi} canManage={false} selectedId={selectedCarId} onSelect={setSelectedCarId} />
+        <CarsScreen
+          api={carsApi}
+          canManage={false}
+          selectedId={null}
+          onSelect={(carId) => {
+            if (!carId) {
+              return;
+            }
+
+            void router.navigate({ to: paths.shiftReport, params: { carId } });
+          }}
+        />
       </div>
     </>
   );
+}
+
+function ShiftReportRoute() {
+  const { carId } = shiftReportRoute.useParams();
+
+  return <ShiftReportPage carId={carId} today={new Date()} api={shiftReportApi} carsApi={carsApi} />;
 }
 
 function SettingsPage() {
@@ -283,6 +302,17 @@ const reportsRoute = createRoute({
   component: ReportsPage,
 });
 
+const shiftReportRoute = createRoute({
+  getParentRoute: () => navLayoutRoute,
+  path: paths.shiftReport,
+  beforeLoad: ({ context }) => {
+    if (context.membership == null) {
+      throw redirect({ to: paths.home });
+    }
+  },
+  component: ShiftReportRoute,
+});
+
 const settingsRoute = createRoute({
   getParentRoute: () => navLayoutRoute,
   path: paths.settings,
@@ -326,6 +356,7 @@ export const routeTree = rootRoute.addChildren([
     indexRoute,
     scheduleRoute,
     reportsRoute,
+    shiftReportRoute,
     settingsRoute,
     accountRoute,
   ]),
