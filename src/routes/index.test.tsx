@@ -7,6 +7,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { appShellClassName } from "../components/app-shell";
 import { pageGutterClassName } from "../components/page-layout";
+import { carsMessages } from "../features/cars/messages";
 import { scheduleMessages } from "../features/schedule/messages";
 import { accountMessages } from "../messages/account";
 import { homeMessages } from "../messages/home";
@@ -18,7 +19,7 @@ import { signUpMessages } from "../messages/sign-up";
 import { routeTree } from "./index";
 import { paths } from "./paths";
 
-const { signInSocial, sessionState, clientOptions, taxiParkState } = vi.hoisted(() => {
+const { signInSocial, sessionState, clientOptions, taxiParkState, carsState } = vi.hoisted(() => {
   const membership: {
     current: { taxiParkId: string; name: string; role: "owner" | "worker" } | null;
   } = { current: null };
@@ -46,8 +47,27 @@ const { signInSocial, sessionState, clientOptions, taxiParkState } = vi.hoisted(
         role: "worker" as const,
       })),
     },
+    carsState: {
+      current: [] as { id: string; plate: string; hasPhoto: boolean }[],
+    },
   };
 });
+
+vi.mock("../features/cars/api", () => ({
+  carsApi: {
+    list: async () => carsState.current.map((car) => ({ ...car })),
+    create: async () => {
+      throw new Error("create");
+    },
+    update: async () => {
+      throw new Error("update");
+    },
+    remove: async () => {
+      throw new Error("remove");
+    },
+    readPhoto: async () => null,
+  },
+}));
 
 vi.mock("../lib/taxi-park", () => ({
   loadTaxiParkMembership: async () => taxiParkState.membership.current,
@@ -186,6 +206,7 @@ describe("index route", () => {
     taxiParkState.membership.current = null;
     taxiParkState.createTaxiPark.mockClear();
     taxiParkState.inviteWorker.mockClear();
+    carsState.current = [];
   });
 
   it("при сессии / показывает текст основы клиента", async () => {
@@ -484,5 +505,54 @@ describe("index route", () => {
     expect(screen.queryByRole("button", { name: settingsMessages.createPark })).toBeNull();
     expect(screen.queryByRole("button", { name: settingsMessages.invite })).toBeNull();
     expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("отчёты показывают номер выбранной машины без кнопок изменения", async () => {
+    sessionState.current = sessionUser;
+    carsState.current = [
+      { id: "car-1", plate: "А001АА77", hasPhoto: false },
+      { id: "car-2", plate: "В002ВВ77", hasPhoto: false },
+    ];
+
+    taxiParkState.membership.current = ownerMembership;
+    await renderPath(paths.reports);
+    expect(await screen.findByRole("heading", { name: reportsMessages.title })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: carsMessages.addCar })).toBeNull();
+    expect(screen.queryByRole("button", { name: carsMessages.save })).toBeNull();
+    expect(screen.queryByRole("button", { name: carsMessages.deleteCar })).toBeNull();
+
+    const ownerFirst = await screen.findByRole("button", { name: "А001АА77" });
+    const ownerSecond = screen.getByRole("button", { name: "В002ВВ77" });
+    fireEvent.click(ownerSecond);
+    expect(ownerSecond.getAttribute("aria-pressed")).toBe("true");
+    expect(ownerFirst.getAttribute("aria-pressed")).toBe("false");
+    cleanup();
+
+    taxiParkState.membership.current = workerMembership;
+    await renderPath(paths.reports);
+    expect(await screen.findByRole("heading", { name: reportsMessages.title })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: carsMessages.addCar })).toBeNull();
+    expect(screen.queryByRole("button", { name: carsMessages.save })).toBeNull();
+    expect(screen.queryByRole("button", { name: carsMessages.deleteCar })).toBeNull();
+    const workerSecond = await screen.findByRole("button", { name: "В002ВВ77" });
+    fireEvent.click(workerSecond);
+    expect(workerSecond.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "А001АА77" }).getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("расписание показывает список машин и календарь только после выбора", async () => {
+    sessionState.current = sessionUser;
+    taxiParkState.membership.current = ownerMembership;
+    carsState.current = [{ id: "car-1", plate: "А001АА77", hasPhoto: false }];
+
+    await renderPath(paths.schedule);
+    expect(await screen.findByRole("heading", { name: scheduleMessages.title })).toBeTruthy();
+    expect(screen.getAllByRole("heading", { name: scheduleMessages.title })).toHaveLength(1);
+    expect(document.querySelector("[data-slot=calendar]")).toBeNull();
+    expect(await screen.findByRole("button", { name: carsMessages.addCar })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "А001АА77" }));
+    expect(document.querySelector("[data-slot=calendar]")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "А001АА77" }).getAttribute("aria-pressed")).toBe("true");
   });
 });

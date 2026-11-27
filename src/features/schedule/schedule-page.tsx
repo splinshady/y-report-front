@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { type DayButtonProps, type Modifiers } from "react-day-picker";
 import { Calendar } from "../../components/ui/calendar";
 import { PageTitle } from "../../components/ui/type";
+import { type CarsApi } from "../cars/api";
+import { CarsScreen } from "../cars/cars-screen";
 import { type ScheduleApi, type ScheduleRequest } from "./api";
 import { scheduleMessages } from "./messages";
 import {
@@ -191,10 +193,14 @@ function requestDays(group: DraftGroup) {
 export function SchedulePage({
   today,
   api,
+  carsApi,
+  canManageCars,
   canApprove,
 }: {
   today: Date;
   api: ScheduleApi;
+  carsApi: CarsApi;
+  canManageCars: boolean;
   canApprove: boolean;
 }) {
   const months = openMonths(today);
@@ -205,6 +211,7 @@ export function SchedulePage({
   const [serverRequests, setServerRequests] = useState<ScheduleRequest[]>([]);
   const [groups, setGroups] = useState<DraftGroup[]>([]);
   const [saving, setSaving] = useState(false);
+  const [selectedCarId, setSelectedCarId] = useState<string | null>(null);
   const loadId = useRef(0);
   const drafts = assignmentsFromGroups(groups);
   const assignments = visibleAssignments(serverRequests, drafts);
@@ -218,9 +225,18 @@ export function SchedulePage({
   useEffect(() => {
     const id = loadId.current + 1;
     loadId.current = id;
+    setServerRequests([]);
+    setGroups([]);
+    setRangeStartKey(null);
+    setPeriod(false);
+
+    if (!selectedCarId) {
+      return;
+    }
+
     let active = true;
     void api
-      .load()
+      .load(selectedCarId)
       .then((loaded) => {
         if (active && loadId.current === id) {
           setServerRequests(loaded);
@@ -231,7 +247,7 @@ export function SchedulePage({
     return () => {
       active = false;
     };
-  }, [api]);
+  }, [api, selectedCarId]);
 
   function togglePeriod() {
     if (period) {
@@ -326,15 +342,19 @@ export function SchedulePage({
   }
 
   async function reloadRequests(id: number) {
-    const loaded = await api.load().catch(() => null);
+    if (!selectedCarId) {
+      return;
+    }
+    const loaded = await api.load(selectedCarId).catch(() => null);
     if (loaded && loadId.current === id) {
       setServerRequests(loaded);
     }
   }
 
   async function submitRequest() {
+    const carId = selectedCarId;
     const pending = groups.filter((group) => Object.keys(group.days).length > 0);
-    if (pending.length === 0 || saving) {
+    if (!carId || pending.length === 0 || saving) {
       return;
     }
 
@@ -345,7 +365,7 @@ export function SchedulePage({
     const createdGroupIds: string[] = [];
     try {
       for (const group of pending) {
-        created.push(await api.create(requestDays(group)));
+        created.push(await api.create(carId, requestDays(group)));
         createdGroupIds.push(group.id);
       }
 
@@ -403,6 +423,15 @@ export function SchedulePage({
   return (
     <section className="font-sans">
       <PageTitle>{scheduleMessages.title}</PageTitle>
+      <div className="mt-6">
+        <CarsScreen
+          api={carsApi}
+          canManage={canManageCars}
+          selectedId={selectedCarId}
+          onSelect={setSelectedCarId}
+        />
+      </div>
+      {selectedCarId ? (
       <div className="mt-6 flex w-full flex-col gap-8 md:flex-row md:items-start">
         <div className="flex w-full min-w-0 flex-1 flex-col gap-3">
           <div className="flex flex-wrap gap-1">
@@ -568,6 +597,7 @@ export function SchedulePage({
           })}
         </ul>
       </div>
+      ) : null}
     </section>
   );
 }

@@ -15,6 +15,8 @@ import { AccountAvatar } from "../components/ui/avatar";
 import { Button } from "../components/ui/button";
 import { SurfaceCard } from "../components/ui/surface-card";
 import { DisplayTitle, PageTitle, textLinkClassName } from "../components/ui/type";
+import { carsApi } from "../features/cars/api";
+import { CarsScreen } from "../features/cars/cars-screen";
 import { scheduleApi } from "../features/schedule/api";
 import { scheduleMessages } from "../features/schedule/messages";
 import { SchedulePage } from "../features/schedule/schedule-page";
@@ -56,8 +58,15 @@ function HomePage() {
 
 function ScheduleRoute() {
   const { membership } = scheduleRoute.useRouteContext();
+  const owner = membership?.role === "owner";
   return (
-    <SchedulePage today={new Date()} api={scheduleApi} canApprove={membership?.role === "owner"} />
+    <SchedulePage
+      today={new Date()}
+      api={scheduleApi}
+      carsApi={carsApi}
+      canManageCars={owner}
+      canApprove={owner}
+    />
   );
 }
 
@@ -118,7 +127,16 @@ function AccountPage() {
 }
 
 function ReportsPage() {
-  return <PageTitle>{reportsMessages.title}</PageTitle>;
+  const [selectedCarId, setSelectedCarId] = useState<string | null>(null);
+
+  return (
+    <>
+      <PageTitle>{reportsMessages.title}</PageTitle>
+      <div className="mt-6">
+        <CarsScreen api={carsApi} canManage={false} selectedId={selectedCarId} onSelect={setSelectedCarId} />
+      </div>
+    </>
+  );
 }
 
 function SettingsPage() {
