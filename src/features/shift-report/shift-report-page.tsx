@@ -1,36 +1,29 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { type CarsApi } from "../cars/api";
+import { ShiftReportRequestError, type ShiftReportApi, type ShiftReportPhotoFile, type ShiftReportShift } from "./api";
 import {
-  isShiftReportDateAllowed,
+  firstShiftReportField,
   shiftReportDateKey,
-  type ShiftReport,
-  type ShiftReportApi,
-  type ShiftReportPhotoFile,
-  type ShiftReportShift,
-} from "./api";
+  shiftReportFieldErrors,
+  shiftReportNumberKeys,
+  type ShiftReportField,
+  type ShiftReportFieldCode,
+  type ShiftReportFieldErrors,
+  type ShiftReportFormError,
+  type ShiftReportNumberKey,
+} from "./field-errors";
 import { shiftReportMessages } from "./messages";
 
 const fieldClassName =
-  "min-h-touch rounded-card border border-border bg-surface px-4 font-sans text-body tracking-body text-ink";
+  "min-h-touch rounded-card border bg-surface px-4 font-sans text-body tracking-body text-ink";
 
-const numberFields = [
-  { key: "mileageStart", label: shiftReportMessages.mileageStart },
-  { key: "mileageEnd", label: shiftReportMessages.mileageEnd },
-  { key: "cashless", label: shiftReportMessages.cashless },
-  { key: "cash", label: shiftReportMessages.cash },
-  { key: "discount", label: shiftReportMessages.discount },
-  { key: "tip", label: shiftReportMessages.tip },
-  { key: "wash", label: shiftReportMessages.wash },
-  { key: "lineTime", label: shiftReportMessages.lineTime },
-  { key: "cashStart", label: shiftReportMessages.cashStart },
-  { key: "cashEnd", label: shiftReportMessages.cashEnd },
-  { key: "shiftTotal", label: shiftReportMessages.shiftTotal },
-] as const;
+const numberFields = shiftReportNumberKeys.map((key) => ({
+  key,
+  label: shiftReportMessages[key],
+}));
 
-type NumberKey = (typeof numberFields)[number]["key"];
-
-const emptyNumbers: Record<NumberKey, string> = {
+const emptyNumbers: Record<ShiftReportNumberKey, string> = {
   mileageStart: "",
   mileageEnd: "",
   cashless: "",
@@ -82,16 +75,36 @@ async function readPhotoFile(file: File): Promise<ShiftReportPhotoFile> {
   return { contentType: file.type, data: btoa(binary) };
 }
 
+function controlClass(invalid: boolean) {
+  return `${fieldClassName} ${invalid ? "border-danger" : "border-border"}`;
+}
+
+function fieldId(field: ShiftReportField) {
+  return `shift-report-${field}`;
+}
+
+function focusField(field: ShiftReportField) {
+  document.getElementById(fieldId(field))?.focus();
+}
+
+function withoutField(fields: ShiftReportFieldErrors, field: ShiftReportField): ShiftReportFieldErrors {
+  const next = { ...fields };
+  delete next[field];
+  return next;
+}
+
 export function ShiftReportPage({
   carId,
   today,
   api,
   carsApi,
+  onCreated,
 }: {
   carId: string;
   today: Date;
   api: ShiftReportApi;
   carsApi: Pick<CarsApi, "list">;
+  onCreated?: (reportId: string) => void;
 }) {
   const [plate, setPlate] = useState("");
   const [date, setDate] = useState(() => shiftReportDateKey(today));
@@ -103,11 +116,14 @@ export function ShiftReportPage({
     null,
     null,
   ]);
-  const [report, setReport] = useState<ShiftReport | null>(null);
-  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
+  const [attempted, setAttempted] = useState(false);
+  const [clientErrors, setClientErrors] = useState<ShiftReportFieldErrors>({});
+  const [serverErrors, setServerErrors] = useState<ShiftReportFieldErrors>({});
+  const [formError, setFormError] = useState<ShiftReportFormError | null>(null);
   const [saving, setSaving] = useState(false);
-  const loadEpoch = useRef(0);
   const visibleDate = calendarDate(date);
+  const shownErrors: ShiftReportFieldErrors = attempted ? { ...clientErrors, ...serverErrors } : serverErrors;
+  const shiftRejected = formError === "shift" || formError === "duplicate";
 
   useEffect(() => {
     let active = true;
@@ -125,67 +141,42 @@ export function ShiftReportPage({
     };
   }, [carId, carsApi]);
 
-  useEffect(() => {
-    const epoch = loadEpoch.current + 1;
-    loadEpoch.current = epoch;
-    let active = true;
-    setReport(null);
-    void api
-      .read(carId, date, shift)
-      .then((loaded) => {
-        if (active && loadEpoch.current === epoch) {
-          setReport(loaded);
-        }
-      })
-      .catch(() => {
-        if (active && loadEpoch.current === epoch) {
-          setReport(null);
-        }
-      });
+  function errorsFor(
+    nextDate: string,
+    nextNumbers: Record<ShiftReportNumberKey, string>,
+    nextPhotos: readonly (File | null)[],
+  ) {
+    return shiftReportFieldErrors({
+      date: nextDate,
+      numbers: nextNumbers,
+      photos: nextPhotos,
+    });
+  }
 
-    return () => {
-      active = false;
-    };
-  }, [api, carId, date, shift]);
+  function publishClientErrors(
+    nextDate: string,
+    nextNumbers: Record<ShiftReportNumberKey, string>,
+    nextPhotos: readonly (File | null)[],
+  ) {
+    if (!attempted) {
+      return;
+    }
+    setClientErrors(errorsFor(nextDate, nextNumbers, nextPhotos));
+  }
 
-  useEffect(() => {
-    if (!report) {
-      setPhotoUrls([]);
+  async function submitCreate() {
+    if (saving) {
       return;
     }
 
-    let active = true;
-    const created: string[] = [];
-    void (async () => {
-      const urls: string[] = [];
-      for (const slot of photoSlots) {
-        const blob = await api.readPhoto(report.id, slot);
-        if (!blob) {
-          continue;
-        }
-        const url = URL.createObjectURL(blob);
-        if (!active) {
-          URL.revokeObjectURL(url);
-          continue;
-        }
-        created.push(url);
-        urls.push(url);
-      }
-      if (active) {
-        setPhotoUrls(urls);
-      }
-    })().catch(() => undefined);
-
-    return () => {
-      active = false;
-      for (const url of created) {
-        URL.revokeObjectURL(url);
-      }
-    };
-  }, [api, report]);
-
-  async function submitCreate() {
-    if (saving || !isShiftReportDateAllowed(date, today) || photoFiles.some((file) => file == null)) {
+    const nextErrors = errorsFor(date, numbers, photoFiles);
+    setAttempted(true);
+    setClientErrors(nextErrors);
+    setServerErrors({});
+    setFormError(null);
+    const firstInvalid = firstShiftReportField(nextErrors);
+    if (firstInvalid) {
+      focusField(firstInvalid);
       return;
     }
 
@@ -200,6 +191,7 @@ export function ShiftReportPage({
     const cashStart = parsedNumber(numbers.cashStart);
     const cashEnd = parsedNumber(numbers.cashEnd);
     const shiftTotal = parsedNumber(numbers.shiftTotal);
+    const [first, second, third, fourth] = photoFiles;
     if (
       mileageStart == null ||
       mileageEnd == null ||
@@ -211,13 +203,12 @@ export function ShiftReportPage({
       lineTime == null ||
       cashStart == null ||
       cashEnd == null ||
-      shiftTotal == null
+      shiftTotal == null ||
+      !first ||
+      !second ||
+      !third ||
+      !fourth
     ) {
-      return;
-    }
-
-    const [first, second, third, fourth] = photoFiles;
-    if (!first || !second || !third || !fourth) {
       return;
     }
 
@@ -245,14 +236,32 @@ export function ShiftReportPage({
           await readPhotoFile(fourth),
         ],
       });
-      loadEpoch.current += 1;
-      setReport(created);
-    } catch {
-      return;
+      onCreated?.(created.id);
+    } catch (error) {
+      if (error instanceof ShiftReportRequestError) {
+        setServerErrors(error.fields);
+        setFormError(error.form);
+        const serverField = firstShiftReportField(error.fields);
+        if (serverField) {
+          focusField(serverField);
+        } else if (error.form) {
+          focusField("date");
+        }
+        return;
+      }
+      setFormError("save");
     } finally {
       setSaving(false);
     }
   }
+
+  function numberError(key: ShiftReportNumberKey): ShiftReportFieldCode | null {
+    return shownErrors[key] ?? null;
+  }
+
+  const photoError = photoSlots
+    .map((slot) => shownErrors[`photo${slot}`])
+    .find((code) => code != null);
 
   return (
     <div className="flex flex-col gap-4">
@@ -261,10 +270,28 @@ export function ShiftReportPage({
         <p className="font-sans text-body tracking-body text-ink">{shiftReportMessages.dateLabel(visibleDate)}</p>
       ) : null}
       <div className="flex gap-2">
-        <Button type="button" aria-pressed={shift === "day"} onClick={() => setShift("day")}>
+        <Button
+          type="button"
+          aria-pressed={shift === "day"}
+          aria-invalid={shiftRejected && shift === "day"}
+          className={shiftRejected && shift === "day" ? "ring-2 ring-danger" : ""}
+          onClick={() => {
+            setShift("day");
+            setFormError(null);
+          }}
+        >
           {shiftReportMessages.day}
         </Button>
-        <Button type="button" aria-pressed={shift === "night"} onClick={() => setShift("night")}>
+        <Button
+          type="button"
+          aria-pressed={shift === "night"}
+          aria-invalid={shiftRejected && shift === "night"}
+          className={shiftRejected && shift === "night" ? "ring-2 ring-danger" : ""}
+          onClick={() => {
+            setShift("night");
+            setFormError(null);
+          }}
+        >
           {shiftReportMessages.night}
         </Button>
       </div>
@@ -275,64 +302,95 @@ export function ShiftReportPage({
           void submitCreate();
         }}
       >
-        <input
-          type="date"
-          value={date}
-          aria-label={visibleDate ? shiftReportMessages.dateLabel(visibleDate) : undefined}
-          onChange={(event) => setDate(event.target.value)}
-          className={fieldClassName}
-        />
-        {numberFields.map((field) => (
-          <label key={field.key} className="flex flex-col gap-2 font-sans text-body tracking-body text-ink">
-            {field.label}
-            <input
-              value={numbers[field.key]}
-              inputMode="decimal"
-              onChange={(event) =>
-                setNumbers((current) => ({
-                  ...current,
-                  [field.key]: event.target.value,
-                }))
-              }
-              className={fieldClassName}
-            />
-          </label>
-        ))}
-        {photoSlots.map((slot, index) => (
+        <div className="flex flex-col gap-2">
           <input
-            key={slot}
-            type="file"
-            accept="image/*"
-            className={fieldClassName}
+            id={fieldId("date")}
+            type="date"
+            value={date}
+            aria-label={visibleDate ? shiftReportMessages.dateLabel(visibleDate) : undefined}
+            aria-invalid={Boolean(shownErrors.date) || shiftRejected}
+            aria-describedby={shownErrors.date ? "shift-report-date-error" : undefined}
             onChange={(event) => {
-              const file = event.currentTarget.files?.[0] ?? null;
-              setPhotoFiles((current) => {
-                const next = [...current] as [File | null, File | null, File | null, File | null];
-                next[index] = file;
-                return next;
-              });
+              const nextDate = event.target.value;
+              setDate(nextDate);
+              setServerErrors((current) => withoutField(current, "date"));
+              setFormError(null);
+              publishClientErrors(nextDate, numbers, photoFiles);
             }}
+            className={controlClass(Boolean(shownErrors.date) || shiftRejected)}
           />
-        ))}
+          {shownErrors.date ? (
+            <p id="shift-report-date-error" className="font-sans text-body tracking-body text-danger">
+              {shiftReportMessages.fieldError[shownErrors.date]}
+            </p>
+          ) : null}
+        </div>
+        {numberFields.map((field) => {
+          const error = numberError(field.key);
+          return (
+            <div key={field.key} className="flex flex-col gap-2">
+              <label className="flex flex-col gap-2 font-sans text-body tracking-body text-ink">
+                {field.label}
+                <input
+                  id={fieldId(field.key)}
+                  value={numbers[field.key]}
+                  inputMode="decimal"
+                  aria-invalid={Boolean(error)}
+                  aria-describedby={error ? `${fieldId(field.key)}-error` : undefined}
+                  onChange={(event) => {
+                    const nextNumbers = { ...numbers, [field.key]: event.target.value };
+                    setNumbers(nextNumbers);
+                    setServerErrors((current) => withoutField(current, field.key));
+                    setFormError(null);
+                    publishClientErrors(date, nextNumbers, photoFiles);
+                  }}
+                  className={controlClass(Boolean(error))}
+                />
+              </label>
+              {error ? (
+                <p id={`${fieldId(field.key)}-error`} className="font-sans text-body tracking-body text-danger">
+                  {shiftReportMessages.fieldError[error]}
+                </p>
+              ) : null}
+            </div>
+          );
+        })}
+        {photoSlots.map((slot, index) => {
+          const key = `photo${slot}` as const;
+          const invalid = shownErrors[key] != null;
+          return (
+            <input
+              key={slot}
+              id={fieldId(key)}
+              type="file"
+              accept="image/*"
+              aria-invalid={invalid}
+              aria-describedby={photoError ? "shift-report-photos-error" : undefined}
+              className={controlClass(invalid)}
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0] ?? null;
+                const next = [...photoFiles] as [File | null, File | null, File | null, File | null];
+                next[index] = file;
+                setPhotoFiles(next);
+                setServerErrors((current) => withoutField(current, key));
+                setFormError(null);
+                publishClientErrors(date, numbers, next);
+              }}
+            />
+          );
+        })}
+        {photoError ? (
+          <p id="shift-report-photos-error" className="font-sans text-body tracking-body text-danger">
+            {photoError === "image" ? shiftReportMessages.fieldError.image : shiftReportMessages.photoMissing}
+          </p>
+        ) : null}
+        {formError ? (
+          <p role="alert" className="font-sans text-body tracking-body text-danger">
+            {shiftReportMessages.formError[formError]}
+          </p>
+        ) : null}
         <Button type="submit">{shiftReportMessages.create}</Button>
       </form>
-      {report ? (
-        <div className="flex flex-col gap-4">
-          <dl className="flex flex-col gap-2">
-            {numberFields.map((field) => (
-              <div key={field.key}>
-                <dt className="font-sans text-body tracking-body text-muted">{field.label}</dt>
-                <dd className="font-sans text-body tracking-body text-ink">{report[field.key]}</dd>
-              </div>
-            ))}
-          </dl>
-          <div className="flex gap-2">
-            {photoUrls.map((url) => (
-              <img key={url} src={url} alt="" className="size-12 rounded-card object-cover" />
-            ))}
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

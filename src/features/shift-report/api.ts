@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { apiPaths } from "../../lib/api-paths";
+import { type ShiftReportFieldErrors, type ShiftReportFormError } from "./field-errors";
+
+export { isShiftReportDateAllowed, shiftReportDateKey } from "./field-errors";
 
 const shiftReportShiftSchema = z.enum(["day", "night"]);
 
@@ -53,34 +56,56 @@ export type ShiftReportInput = {
   ];
 };
 
+export const shiftReportListSchema = z.object({
+  reports: z.array(shiftReportSchema),
+});
+
+const shiftReportFieldCodeSchema = z.enum(["required", "number", "date", "image"]);
+
+const shiftReportFieldsSchema = z.object({
+  date: shiftReportFieldCodeSchema.optional(),
+  mileageStart: shiftReportFieldCodeSchema.optional(),
+  mileageEnd: shiftReportFieldCodeSchema.optional(),
+  cashless: shiftReportFieldCodeSchema.optional(),
+  cash: shiftReportFieldCodeSchema.optional(),
+  discount: shiftReportFieldCodeSchema.optional(),
+  tip: shiftReportFieldCodeSchema.optional(),
+  wash: shiftReportFieldCodeSchema.optional(),
+  lineTime: shiftReportFieldCodeSchema.optional(),
+  cashStart: shiftReportFieldCodeSchema.optional(),
+  cashEnd: shiftReportFieldCodeSchema.optional(),
+  shiftTotal: shiftReportFieldCodeSchema.optional(),
+  photo1: shiftReportFieldCodeSchema.optional(),
+  photo2: shiftReportFieldCodeSchema.optional(),
+  photo3: shiftReportFieldCodeSchema.optional(),
+  photo4: shiftReportFieldCodeSchema.optional(),
+});
+
+export const shiftReportErrorSchema = z.object({
+  error: z.enum(["unauthorized", "forbidden", "invalid", "conflict", "missing"]),
+  fields: shiftReportFieldsSchema.optional(),
+  form: z.enum(["shift", "duplicate"]).optional(),
+});
+
+export class ShiftReportRequestError extends Error {
+  readonly fields: ShiftReportFieldErrors;
+  readonly form: Exclude<ShiftReportFormError, "save"> | null;
+
+  constructor(fields: ShiftReportFieldErrors, form: Exclude<ShiftReportFormError, "save"> | null) {
+    super("Shift report request failed");
+    this.name = "ShiftReportRequestError";
+    this.fields = fields;
+    this.form = form;
+  }
+}
+
 export type ShiftReportApi = {
+  list: (carId: string) => Promise<ShiftReport[]>;
+  readById: (reportId: string) => Promise<ShiftReport | null>;
   read: (carId: string, date: string, shift: ShiftReportShift) => Promise<ShiftReport | null>;
   create: (input: ShiftReportInput) => Promise<ShiftReport>;
   readPhoto: (reportId: string, slot: 1 | 2 | 3 | 4) => Promise<Blob | null>;
 };
-
-export function shiftReportDateKey(date: Date): string {
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${date.getFullYear()}-${month}-${day}`;
-}
-
-export function isShiftReportDateAllowed(value: string, today: Date): boolean {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) {
-    return false;
-  }
-
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const date = new Date(year, month - 1, day);
-  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
-    return false;
-  }
-
-  return value <= shiftReportDateKey(today);
-}
 
 async function readJson(response: Response): Promise<unknown> {
   if (!response.ok) {
@@ -91,6 +116,18 @@ async function readJson(response: Response): Promise<unknown> {
 }
 
 export const shiftReportApi: ShiftReportApi = {
+  async list(carId) {
+    const response = await fetch(apiPaths.shiftReportsForCar(carId), { credentials: "include" });
+    return shiftReportListSchema.parse(await readJson(response)).reports;
+  },
+  async readById(reportId) {
+    const response = await fetch(apiPaths.shiftReportById(reportId), { credentials: "include" });
+    if (response.status === 404) {
+      return null;
+    }
+
+    return shiftReportSchema.parse(await readJson(response));
+  },
   async read(carId, date, shift) {
     const response = await fetch(apiPaths.shiftReport(carId, date, shift), { credentials: "include" });
     if (response.status === 404) {
@@ -106,7 +143,15 @@ export const shiftReportApi: ShiftReportApi = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(input),
     });
-    return shiftReportSchema.parse(await readJson(response));
+    if (!response.ok) {
+      const body: unknown = await response.json().catch(() => null);
+      const parsed = shiftReportErrorSchema.safeParse(body);
+      const fields = parsed.success ? (parsed.data.fields ?? {}) : {};
+      const form = parsed.success ? (parsed.data.form ?? null) : null;
+      throw new ShiftReportRequestError(fields, form);
+    }
+
+    return shiftReportSchema.parse(await response.json());
   },
   async readPhoto(reportId, slot) {
     const response = await fetch(apiPaths.shiftReportPhoto(reportId, slot), { credentials: "include" });

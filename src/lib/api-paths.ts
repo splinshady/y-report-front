@@ -17,6 +17,10 @@ export const apiPaths = {
   scheduleRequestDelete: (requestId: string) =>
     `/api/schedule/requests/${encodeURIComponent(requestId)}`,
   shiftReports: shiftReportsPath,
+  shiftReportsForCar: (carId: string) =>
+    `${shiftReportsPath}?carId=${encodeURIComponent(carId)}`,
+  shiftReportById: (reportId: string) =>
+    `${shiftReportsPath}/${encodeURIComponent(reportId)}`,
   shiftReport: (carId: string, date: string, shift: string) =>
     `${shiftReportsPath}?carId=${encodeURIComponent(carId)}&date=${encodeURIComponent(date)}&shift=${encodeURIComponent(shift)}`,
   shiftReportPhoto: (reportId: string, slot: number) =>

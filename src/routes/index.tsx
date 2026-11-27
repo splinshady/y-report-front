@@ -21,7 +21,9 @@ import { scheduleApi } from "../features/schedule/api";
 import { scheduleMessages } from "../features/schedule/messages";
 import { SchedulePage } from "../features/schedule/schedule-page";
 import { shiftReportApi } from "../features/shift-report/api";
+import { ShiftReportList } from "../features/shift-report/shift-report-list";
 import { ShiftReportPage } from "../features/shift-report/shift-report-page";
+import { ShiftReportView } from "../features/shift-report/shift-report-view";
 import { authClient, signInWithYandex } from "../lib/auth-client";
 import { createTaxiPark, inviteWorker, loadTaxiParkMembership } from "../lib/taxi-park";
 import { accountMessages } from "../messages/account";
@@ -144,7 +146,7 @@ function ReportsPage() {
               return;
             }
 
-            void router.navigate({ to: paths.shiftReport, params: { carId } });
+            void router.navigate({ to: paths.carReports, params: { carId } });
           }}
         />
       </div>
@@ -152,10 +154,33 @@ function ReportsPage() {
   );
 }
 
-function ShiftReportRoute() {
-  const { carId } = shiftReportRoute.useParams();
+function CarReportsRoute() {
+  const { carId } = carReportsRoute.useParams();
 
-  return <ShiftReportPage carId={carId} today={new Date()} api={shiftReportApi} carsApi={carsApi} />;
+  return <ShiftReportList carId={carId} api={shiftReportApi} carsApi={carsApi} />;
+}
+
+function ShiftReportCreateRoute() {
+  const { carId } = shiftReportCreateRoute.useParams();
+  const router = useRouter();
+
+  return (
+    <ShiftReportPage
+      carId={carId}
+      today={new Date()}
+      api={shiftReportApi}
+      carsApi={carsApi}
+      onCreated={(reportId) => {
+        void router.navigate({ to: paths.shiftReportView, params: { carId, reportId } });
+      }}
+    />
+  );
+}
+
+function ShiftReportViewRoute() {
+  const { carId, reportId } = shiftReportViewRoute.useParams();
+
+  return <ShiftReportView carId={carId} reportId={reportId} api={shiftReportApi} carsApi={carsApi} />;
 }
 
 function SettingsPage() {
@@ -302,15 +327,37 @@ const reportsRoute = createRoute({
   component: ReportsPage,
 });
 
-const shiftReportRoute = createRoute({
+function requireMembership(context: { membership: unknown }) {
+  if (context.membership == null) {
+    throw redirect({ to: paths.home });
+  }
+}
+
+const carReportsRoute = createRoute({
   getParentRoute: () => navLayoutRoute,
-  path: paths.shiftReport,
+  path: paths.carReports,
   beforeLoad: ({ context }) => {
-    if (context.membership == null) {
-      throw redirect({ to: paths.home });
-    }
+    requireMembership(context);
   },
-  component: ShiftReportRoute,
+  component: CarReportsRoute,
+});
+
+const shiftReportCreateRoute = createRoute({
+  getParentRoute: () => navLayoutRoute,
+  path: paths.shiftReportCreate,
+  beforeLoad: ({ context }) => {
+    requireMembership(context);
+  },
+  component: ShiftReportCreateRoute,
+});
+
+const shiftReportViewRoute = createRoute({
+  getParentRoute: () => navLayoutRoute,
+  path: paths.shiftReportView,
+  beforeLoad: ({ context }) => {
+    requireMembership(context);
+  },
+  component: ShiftReportViewRoute,
 });
 
 const settingsRoute = createRoute({
@@ -356,7 +403,9 @@ export const routeTree = rootRoute.addChildren([
     indexRoute,
     scheduleRoute,
     reportsRoute,
-    shiftReportRoute,
+    carReportsRoute,
+    shiftReportCreateRoute,
+    shiftReportViewRoute,
     settingsRoute,
     accountRoute,
   ]),

@@ -20,7 +20,7 @@ import { signUpMessages } from "../messages/sign-up";
 import { routeTree } from "./index";
 import { paths } from "./paths";
 
-const { signInSocial, sessionState, clientOptions, taxiParkState, carsState } = vi.hoisted(() => {
+const { signInSocial, sessionState, clientOptions, taxiParkState, carsState, reportsState } = vi.hoisted(() => {
   const membership: {
     current: { taxiParkId: string; name: string; role: "owner" | "worker" } | null;
   } = { current: null };
@@ -51,6 +51,25 @@ const { signInSocial, sessionState, clientOptions, taxiParkState, carsState } = 
     carsState: {
       current: [] as { id: string; plate: string; hasPhoto: boolean }[],
     },
+    reportsState: {
+      current: [] as {
+        id: string;
+        carId: string;
+        date: string;
+        shift: "day" | "night";
+        mileageStart: number;
+        mileageEnd: number;
+        cashless: number;
+        cash: number;
+        discount: number;
+        tip: number;
+        wash: number;
+        lineTime: number;
+        cashStart: number;
+        cashEnd: number;
+        shiftTotal: number;
+      }[],
+    },
   };
 });
 
@@ -59,11 +78,47 @@ vi.mock("../features/shift-report/api", async (importOriginal) => {
   return {
     ...actual,
     shiftReportApi: {
+      list: async (carId: string) => reportsState.current.filter((report) => report.carId === carId),
+      readById: async (reportId: string) =>
+        reportsState.current.find((report) => report.id === reportId) ?? null,
       read: async () => null,
-      create: async () => {
-        throw new Error("create");
+      create: async (input: {
+        carId: string;
+        date: string;
+        shift: "day" | "night";
+        mileageStart: number;
+        mileageEnd: number;
+        cashless: number;
+        cash: number;
+        discount: number;
+        tip: number;
+        wash: number;
+        lineTime: number;
+        cashStart: number;
+        cashEnd: number;
+        shiftTotal: number;
+      }) => {
+        const report = {
+          id: "report-created",
+          carId: input.carId,
+          date: input.date,
+          shift: input.shift,
+          mileageStart: input.mileageStart,
+          mileageEnd: input.mileageEnd,
+          cashless: input.cashless,
+          cash: input.cash,
+          discount: input.discount,
+          tip: input.tip,
+          wash: input.wash,
+          lineTime: input.lineTime,
+          cashStart: input.cashStart,
+          cashEnd: input.cashEnd,
+          shiftTotal: input.shiftTotal,
+        };
+        reportsState.current = [...reportsState.current, report];
+        return report;
       },
-      readPhoto: async () => null,
+      readPhoto: async () => new Blob([Uint8Array.from([1])], { type: "image/png" }),
     },
   };
 });
@@ -222,6 +277,7 @@ describe("index route", () => {
     taxiParkState.createTaxiPark.mockClear();
     taxiParkState.inviteWorker.mockClear();
     carsState.current = [];
+    reportsState.current = [];
   });
 
   it("при сессии / показывает текст основы клиента", async () => {
@@ -442,8 +498,13 @@ describe("index route", () => {
     expect(screen.queryByRole("heading", { name: reportsMessages.title })).toBeNull();
     cleanup();
 
-    const shiftReport = await renderPath(paths.shiftReport.replace("$carId", "car-1"));
+    const shiftReport = await renderPath(paths.carReports.replace("$carId", "car-1"));
     expect(shiftReport.state.location.pathname).toBe(paths.home);
+    expect(screen.queryByRole("link", { name: shiftReportMessages.create })).toBeNull();
+    cleanup();
+
+    const createReport = await renderPath(paths.shiftReportCreate.replace("$carId", "car-1"));
+    expect(createReport.state.location.pathname).toBe(paths.home);
     expect(screen.queryByRole("button", { name: shiftReportMessages.create })).toBeNull();
   });
 
@@ -527,11 +588,30 @@ describe("index route", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
-  it("клик по машине открывает страницу отчёта без кнопок изменения", async () => {
+  it("клик по машине открывает список отчётов, создание и просмотр идут на свои страницы", async () => {
     sessionState.current = sessionUser;
     carsState.current = [
       { id: "car-1", plate: "А001АА77", hasPhoto: false },
       { id: "car-2", plate: "В002ВВ77", hasPhoto: false },
+    ];
+    reportsState.current = [
+      {
+        id: "report-1",
+        carId: "car-2",
+        date: "2026-11-25",
+        shift: "day",
+        mileageStart: 1,
+        mileageEnd: 2,
+        cashless: 3,
+        cash: 4,
+        discount: 5,
+        tip: 6,
+        wash: 7,
+        lineTime: 8,
+        cashStart: 9,
+        cashEnd: 10,
+        shiftTotal: 11,
+      },
     ];
 
     for (const membership of [ownerMembership, workerMembership]) {
@@ -539,22 +619,71 @@ describe("index route", () => {
       const reports = await renderPath(paths.reports);
       expect(await screen.findByRole("heading", { name: reportsMessages.title })).toBeTruthy();
       expect(screen.queryByRole("button", { name: carsMessages.addCar })).toBeNull();
-      expect(screen.queryByRole("button", { name: carsMessages.save })).toBeNull();
-      expect(screen.queryByRole("button", { name: carsMessages.deleteCar })).toBeNull();
 
       fireEvent.click(await screen.findByRole("button", { name: "В002ВВ77" }));
       await reports.load();
 
-      expect(reports.state.location.pathname).toBe(paths.shiftReport.replace("$carId", "car-2"));
+      expect(reports.state.location.pathname).toBe(paths.carReports.replace("$carId", "car-2"));
       expect(await screen.findByText("В002ВВ77")).toBeTruthy();
-      expect(screen.getByRole("button", { name: shiftReportMessages.day })).toBeTruthy();
-      expect(screen.getByRole("button", { name: shiftReportMessages.night })).toBeTruthy();
-      expect(screen.getByRole("button", { name: shiftReportMessages.create })).toBeTruthy();
-      expect(screen.queryByRole("button", { name: carsMessages.addCar })).toBeNull();
+      expect(screen.queryByRole("button", { name: shiftReportMessages.day })).toBeNull();
+      expect(document.querySelector('input[type="file"]')).toBeNull();
       expect(screen.queryByRole("button", { name: carsMessages.save })).toBeNull();
       expect(screen.queryByRole("button", { name: carsMessages.deleteCar })).toBeNull();
+
+      fireEvent.click(screen.getByRole("link", { name: shiftReportMessages.create }));
+      await reports.load();
+      expect(reports.state.location.pathname).toBe(paths.shiftReportCreate.replace("$carId", "car-2"));
+      expect(screen.getByRole("button", { name: shiftReportMessages.day })).toBeTruthy();
+      expect(screen.getByRole("button", { name: shiftReportMessages.create })).toBeTruthy();
+
+      fireEvent.click(screen.getByRole("link", { name: navigationMessages.reports }));
+      await reports.load();
+      fireEvent.click(await screen.findByRole("button", { name: "В002ВВ77" }));
+      await reports.load();
+      fireEvent.click(
+        await screen.findByRole("link", {
+          name: shiftReportMessages.summary(new Date(2026, 10, 25), "day"),
+        }),
+      );
+      await reports.load();
+
+      expect(reports.state.location.pathname).toBe(
+        paths.shiftReportView.replace("$carId", "car-2").replace("$reportId", "report-1"),
+      );
+      expect(await screen.findByText("11")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: shiftReportMessages.create })).toBeNull();
+      expect(document.querySelector('input[type="file"]')).toBeNull();
       cleanup();
     }
+  });
+
+  it("после создания отчёта открывается его страница", async () => {
+    sessionState.current = sessionUser;
+    taxiParkState.membership.current = ownerMembership;
+    carsState.current = [{ id: "car-2", plate: "В002ВВ77", hasPhoto: false }];
+
+    const reports = await renderPath(paths.shiftReportCreate.replace("$carId", "car-2"));
+    expect(await screen.findByText("В002ВВ77")).toBeTruthy();
+
+    for (const field of screen.getAllByRole("textbox")) {
+      fireEvent.change(field, { target: { value: "0" } });
+    }
+    fireEvent.change(screen.getByRole("textbox", { name: shiftReportMessages.shiftTotal }), {
+      target: { value: "7" },
+    });
+    const files = [...document.querySelectorAll('input[type="file"]')] as HTMLInputElement[];
+    for (const input of files) {
+      fireEvent.change(input, { target: { files: [new File(["img"], "photo.png", { type: "image/png" })] } });
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: shiftReportMessages.create }));
+    await reports.load();
+
+    expect(reports.state.location.pathname).toBe(
+      paths.shiftReportView.replace("$carId", "car-2").replace("$reportId", "report-created"),
+    );
+    expect(await screen.findByText("7")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: shiftReportMessages.create })).toBeNull();
   });
 
   it("расписание показывает список машин и календарь только после выбора", async () => {

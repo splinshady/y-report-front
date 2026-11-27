@@ -2,8 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { apiPaths } from "../../lib/api-paths";
 import { isShiftReportDateAllowed, shiftReportApi, shiftReportSchema, type ShiftReportInput } from "./api";
 
-const today = new Date(2026, 10, 25);
-
 const savedReport = {
   id: "report-1",
   carId: "car-1",
@@ -27,10 +25,11 @@ afterEach(() => {
 });
 
 describe("shiftReportApi", () => {
-  it("сегодня и раньше проходят, завтра нет", () => {
-    expect(isShiftReportDateAllowed("2026-11-25", today)).toBe(true);
-    expect(isShiftReportDateAllowed("2026-11-24", today)).toBe(true);
-    expect(isShiftReportDateAllowed("2026-11-26", today)).toBe(false);
+  it("прошедший, сегодняшний и будущий день проходят", () => {
+    expect(isShiftReportDateAllowed("2026-11-24")).toBe(true);
+    expect(isShiftReportDateAllowed("2026-11-25")).toBe(true);
+    expect(isShiftReportDateAllowed("2026-11-26")).toBe(true);
+    expect(isShiftReportDateAllowed("2026-02-31")).toBe(false);
   });
 
   it("читает и пишет отчёт с сессионной cookie", async () => {
@@ -94,6 +93,47 @@ describe("shiftReportApi", () => {
     });
     expect(fetchMock).toHaveBeenNthCalledWith(4, apiPaths.shiftReportPhoto("report-1", 1), {
       credentials: "include",
+    });
+  });
+
+  it("ошибка сохранения приходит полями", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: "invalid", fields: { mileageEnd: "required" }, form: "shift" }), {
+            status: 400,
+          }),
+      ),
+    );
+
+    await expect(
+      shiftReportApi.create({
+        carId: "car-1",
+        date: "2026-11-25",
+        shift: "day",
+        mileageStart: 0,
+        mileageEnd: 0,
+        cashless: 0,
+        cash: 0,
+        discount: 0,
+        tip: 0,
+        wash: 0,
+        lineTime: 0,
+        cashStart: 0,
+        cashEnd: 0,
+        shiftTotal: 0,
+        photos: [
+          { contentType: "image/png", data: "aa" },
+          { contentType: "image/png", data: "bb" },
+          { contentType: "image/png", data: "cc" },
+          { contentType: "image/png", data: "dd" },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      name: "ShiftReportRequestError",
+      fields: { mileageEnd: "required" },
+      form: "shift",
     });
   });
 });

@@ -1,7 +1,8 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { type CarsApi } from "../cars/api";
-import { type ShiftReport, type ShiftReportApi, type ShiftReportInput } from "./api";
+import { ShiftReportRequestError, type ShiftReport, type ShiftReportApi, type ShiftReportInput } from "./api";
+import { type ShiftReportFieldErrors, type ShiftReportFormError } from "./field-errors";
 import { shiftReportMessages } from "./messages";
 import { ShiftReportPage } from "./shift-report-page";
 
@@ -45,12 +46,20 @@ function zeroValues(): Record<FieldKey, string> {
   };
 }
 
-function createMemoryApi(options?: { failCreate?: boolean }) {
+function createMemoryApi(options?: {
+  failure?: { fields?: ShiftReportFieldErrors; form?: Exclude<ShiftReportFormError, "save"> | null };
+}) {
   const calls = { create: 0 };
   let lastInput: ShiftReportInput | null = null;
   let stored: ShiftReport | null = null;
 
   const api: ShiftReportApi = {
+    async list() {
+      return stored ? [stored] : [];
+    },
+    async readById(reportId) {
+      return stored?.id === reportId ? stored : null;
+    },
     async read(requestCarId, date, shift) {
       if (!stored || stored.carId !== requestCarId || stored.date !== date || stored.shift !== shift) {
         return null;
@@ -60,8 +69,8 @@ function createMemoryApi(options?: { failCreate?: boolean }) {
     async create(input) {
       calls.create += 1;
       lastInput = input;
-      if (options?.failCreate) {
-        throw new Error("failed");
+      if (options?.failure) {
+        throw new ShiftReportRequestError(options.failure.fields ?? {}, options.failure.form ?? null);
       }
       stored = {
         id: "report-1",
@@ -94,8 +103,8 @@ function createMemoryApi(options?: { failCreate?: boolean }) {
   };
 }
 
-function renderPage(api: ShiftReportApi) {
-  render(<ShiftReportPage carId={carId} today={today} api={api} carsApi={carsApi} />);
+function renderPage(api: ShiftReportApi, onCreated?: (reportId: string) => void) {
+  render(<ShiftReportPage carId={carId} today={today} api={api} carsApi={carsApi} onCreated={onCreated} />);
 }
 
 function fileInputs() {
@@ -159,77 +168,128 @@ describe("shift report page", () => {
     fillNumbers({ ...zeroValues(), mileageStart: "" });
     chooseFiles(4);
     fireEvent.click(screen.getByRole("button", { name: shiftReportMessages.create }));
+    const mileageStart = screen.getByRole("textbox", { name: shiftReportMessages.mileageStart });
     expect(memory.calls.create).toBe(0);
-    expect(document.querySelector("dl")).toBeNull();
+    expect(mileageStart.getAttribute("aria-invalid")).toBe("true");
+    expect(mileageStart.className).toContain("border-danger");
+    expect(screen.getByText(shiftReportMessages.fieldError.required)).toBeTruthy();
 
-    fillNumbers({ mileageStart: "0" });
+    fireEvent.change(mileageStart, { target: { value: "0" } });
+    expect(mileageStart.getAttribute("aria-invalid")).toBe("false");
+    expect(mileageStart.className).not.toContain("border-danger");
+
     fireEvent.change(fileInputs()[3] as HTMLInputElement, { target: { files: [] } });
     fireEvent.click(screen.getByRole("button", { name: shiftReportMessages.create }));
     expect(memory.calls.create).toBe(0);
-    expect(document.querySelector("dl")).toBeNull();
+    expect(fileInputs()[3]?.getAttribute("aria-invalid")).toBe("true");
+    expect(fileInputs()[3]?.className).toContain("border-danger");
+    expect(screen.getByText(shiftReportMessages.photoMissing)).toBeTruthy();
   });
 
-  it("ноль и четыре фото сохраняют введённый итог", async () => {
-    const originalCreate = URL.createObjectURL;
-    const originalRevoke = URL.revokeObjectURL;
-    let blobIndex = 0;
-    URL.createObjectURL = () => {
-      blobIndex += 1;
-      return `blob:report-photo-${blobIndex}`;
-    };
-    URL.revokeObjectURL = () => undefined;
-
+  it("нечисло подсвечивается и правится без повторной отправки", async () => {
     const memory = createMemoryApi();
     renderPage(memory.api);
     await screen.findByText(plate);
+
+    fillNumbers({ ...zeroValues(), cash: "нет" });
+    chooseFiles(4);
+    fireEvent.click(screen.getByRole("button", { name: shiftReportMessages.create }));
+
+    const cash = screen.getByRole("textbox", { name: shiftReportMessages.cash });
+    expect(memory.calls.create).toBe(0);
+    expect(cash.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.getByText(shiftReportMessages.fieldError.number)).toBeTruthy();
+
+    fireEvent.change(cash, { target: { value: "20" } });
+    expect(cash.getAttribute("aria-invalid")).toBe("false");
+    expect(screen.queryByText(shiftReportMessages.fieldError.number)).toBeNull();
+  });
+
+  it("ошибка поля с сервера подсвечивает это поле", async () => {
+    const memory = createMemoryApi({ failure: { fields: { cash: "number" } } });
+    renderPage(memory.api);
+    await screen.findByText(plate);
+
+    fillNumbers(zeroValues());
+    chooseFiles(4);
+    fireEvent.click(screen.getByRole("button", { name: shiftReportMessages.create }));
+
+    const cash = await screen.findByRole("textbox", { name: shiftReportMessages.cash });
+    await waitFor(() => {
+      expect(memory.calls.create).toBe(1);
+    });
+    expect(cash.getAttribute("aria-invalid")).toBe("true");
+    expect(cash.className).toContain("border-danger");
+    expect(screen.getByText(shiftReportMessages.fieldError.number)).toBeTruthy();
+  });
+
+  it("ноль и четыре фото сохраняют введённый итог и не показывают отчёт", async () => {
+    const memory = createMemoryApi();
+    await memory.api.create({
+      carId,
+      date: "2026-11-25",
+      shift: "day",
+      mileageStart: 9,
+      mileageEnd: 9,
+      cashless: 9,
+      cash: 9,
+      discount: 9,
+      tip: 9,
+      wash: 9,
+      lineTime: 9,
+      cashStart: 9,
+      cashEnd: 9,
+      shiftTotal: 9,
+      photos: [
+        { contentType: "image/png", data: "aa" },
+        { contentType: "image/png", data: "bb" },
+        { contentType: "image/png", data: "cc" },
+        { contentType: "image/png", data: "dd" },
+      ],
+    });
+    memory.calls.create = 0;
+    const opened: string[] = [];
+    renderPage(memory.api, (reportId) => {
+      opened.push(reportId);
+    });
+    await screen.findByText(plate);
+    expect(document.querySelector("dl")).toBeNull();
+    expect(document.querySelector("img")).toBeNull();
 
     fillNumbers({ ...zeroValues(), mileageEnd: "-1.5", shiftTotal: "7" });
     chooseFiles(4);
     fireEvent.click(screen.getByRole("button", { name: shiftReportMessages.night }));
     fireEvent.click(screen.getByRole("button", { name: shiftReportMessages.create }));
 
-    const saved = (await screen.findByText("7")).closest("dl");
-    expect(saved).toBeTruthy();
-    expect(within(saved as HTMLElement).getByText("-1.5")).toBeTruthy();
-    expect(within(saved as HTMLElement).getAllByText("0").length).toBeGreaterThan(0);
-    expect(memory.calls.create).toBe(1);
+    await waitFor(() => {
+      expect(memory.calls.create).toBe(1);
+      expect(opened).toEqual(["report-1"]);
+    });
     expect(memory.lastInput()?.shift).toBe("night");
     expect(memory.lastInput()?.shiftTotal).toBe(7);
     expect(memory.lastInput()?.mileageStart).toBe(0);
     expect(memory.lastInput()?.mileageEnd).toBe(-1.5);
     expect(memory.lastInput()?.photos).toHaveLength(4);
-    await waitFor(() => {
-      expect(document.querySelectorAll("img")).toHaveLength(4);
-    });
-    for (const image of document.querySelectorAll("img")) {
-      expect(image.getAttribute("alt")).toBe("");
-    }
-
-    URL.createObjectURL = originalCreate;
-    URL.revokeObjectURL = originalRevoke;
+    expect(document.querySelector("dl")).toBeNull();
+    expect(document.querySelector("img")).toBeNull();
   });
 
-  it("завтрашний день и ошибка сохранения не показывают отчёт", async () => {
-    const memory = createMemoryApi({ failCreate: true });
+  it("будущий день уходит на сервер, ошибка смены показывается на форме", async () => {
+    const memory = createMemoryApi({ failure: { form: "shift" } });
     renderPage(memory.api);
     await screen.findByText(plate);
 
     fillNumbers(zeroValues());
     chooseFiles(4);
-    fireEvent.change(document.querySelector('input[type="date"]') as HTMLInputElement, {
-      target: { value: "2026-11-26" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: shiftReportMessages.create }));
-    expect(memory.calls.create).toBe(0);
-    expect(document.querySelector("dl")).toBeNull();
-
-    fireEvent.change(document.querySelector('input[type="date"]') as HTMLInputElement, {
-      target: { value: "2026-11-25" },
-    });
+    const date = document.querySelector('input[type="date"]') as HTMLInputElement;
+    fireEvent.change(date, { target: { value: "2026-11-26" } });
     fireEvent.click(screen.getByRole("button", { name: shiftReportMessages.create }));
     await waitFor(() => {
       expect(memory.calls.create).toBe(1);
     });
-    expect(document.querySelector("dl")).toBeNull();
+    expect(memory.lastInput()?.date).toBe("2026-11-26");
+    expect(screen.queryByText(shiftReportMessages.fieldError.date)).toBeNull();
+    expect(screen.getByRole("alert").textContent).toBe(shiftReportMessages.formError.shift);
+    expect(date.className).toContain("border-danger");
   });
 });
